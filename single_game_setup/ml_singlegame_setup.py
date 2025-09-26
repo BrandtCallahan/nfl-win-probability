@@ -50,7 +50,7 @@ def gamelog_setup(season, tm_name, gm_date):
 
     # pull data from csv_files folder
     gamelog = pd.read_csv(
-        f"~/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/csv_files/season{season}_tm_gamelogs.csv",
+        f"~/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
     )
     team_gamelog = gamelog[gamelog["Tm"] == tm_df["Tm Abbrv"][0]]
 
@@ -257,7 +257,7 @@ def season_data(season):
 
     # read results df
     results_df = pd.read_csv(
-        f"~/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/csv_files/season{season}_results.csv",
+        f"~/nfl-win-probability/csv_files/season{season}_results.csv",
     )
     season_df = pd.DataFrame()
 
@@ -295,72 +295,6 @@ def season_data(season):
                     right_on=["Matchup", "Away Team", "Home Team"],
                 )
 
-                """
-                # Instead of relying on Home Pt Diff alone, build out normalized variable (condensed options)
-                gamelog_stats.loc[
-                    gamelog_stats["Home Pt Diff"] < -21.5, "Home Pt Margin"
-                ] = -21
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > -21.5)
-                    & (gamelog_stats["Home Pt Diff"] < -14.5),
-                    "Home Pt Margin",
-                ] = -14
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > -14.5)
-                    & (gamelog_stats["Home Pt Diff"] < -10.5),
-                    "Home Pt Margin",
-                ] = -10
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > -10.5)
-                    & (gamelog_stats["Home Pt Diff"] < -7.5),
-                    "Home Pt Margin",
-                ] = -7
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > -7.5)
-                    & (gamelog_stats["Home Pt Diff"] < 3.5),
-                    "Home Pt Margin",
-                ] = -3
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > -3.5)
-                    & (gamelog_stats["Home Pt Diff"] < -1.5),
-                    "Home Pt Margin",
-                ] = -1
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 1.5)
-                    & (gamelog_stats["Home Pt Diff"] > -1.5),
-                    "Home Pt Margin",
-                ] = 0
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 3.5)
-                    & (gamelog_stats["Home Pt Diff"] > 1.5),
-                    "Home Pt Margin",
-                ] = 1
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 7.5)
-                    & (gamelog_stats["Home Pt Diff"] > 3.5),
-                    "Home Pt Margin",
-                ] = 3
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 10.5)
-                    & (gamelog_stats["Home Pt Diff"] > 7.5),
-                    "Home Pt Margin",
-                ] = 7
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 14.5)
-                    & (gamelog_stats["Home Pt Diff"] > 10.5),
-                    "Home Pt Margin",
-                ] = 10
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] < 21.5)
-                    & (gamelog_stats["Home Pt Diff"] > 14.5),
-                    "Home Pt Margin",
-                ] = 14
-                gamelog_stats.loc[
-                    (gamelog_stats["Home Pt Diff"] > 21.5),
-                    "Home Pt Margin",
-                ] = 21
-                """
-
                 season_df = (
                     pd.concat([season_df, gamelog_stats])
                     .drop_duplicates(subset=["Matchup", "Game Date"])
@@ -376,7 +310,7 @@ def season_data(season):
 
     # save .csv file
     season_df.to_csv(
-        f"~/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/csv_files/season{season}_matchup_results.csv",
+        f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         index=False,
     )
 
@@ -389,48 +323,12 @@ def single_game_model(data_seasons, today, matchup):
     matchup_df = pd.DataFrame()
     for season in data_seasons:
         tmp_df = pd.read_csv(
-            f"~/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/csv_files/season{season}_matchup_results.csv",
+            f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
 
         # concat all years of data into one df
         matchup_df = pd.concat([matchup_df, tmp_df]).reset_index(drop=True)
-
-    """
-    # add boolean flags for Home Pt Margin (i.e. <3, >3, >7, >10, >14, >21)
-    matchup_df["Hm_PtMargin-21+"] = matchup_df["Home Pt Diff"] < -21
-    matchup_df["Hm_PtMargin-21"] = matchup_df["Home Pt Diff"] >= -21
-    matchup_df["Hm_PtMargin-14"] = matchup_df["Home Pt Diff"] >= -14
-    matchup_df["Hm_PtMargin-10"] = matchup_df["Home Pt Diff"] >= -10
-    matchup_df["Hm_PtMargin-7"] = matchup_df["Home Pt Diff"] >= -7
-    matchup_df["Hm_PtMargin-3"] = matchup_df["Home Pt Diff"] >= -3
-    matchup_df["Hm_PtMargin-1"] = matchup_df["Home Pt Diff"] >= -1
-    matchup_df["Hm_PtMargin1"] = matchup_df["Home Pt Diff"] <= 1
-    matchup_df["Hm_PtMargin3"] = matchup_df["Home Pt Diff"] <= 3
-    matchup_df["Hm_PtMargin7"] = matchup_df["Home Pt Diff"] <= 7
-    matchup_df["Hm_PtMargin10"] = matchup_df["Home Pt Diff"] <= 10
-    matchup_df["Hm_PtMargin14"] = matchup_df["Home Pt Diff"] <= 14
-    matchup_df["Hm_PtMargin21"] = matchup_df["Home Pt Diff"] <= 21
-    matchup_df["Hm_PtMargin21+"] = matchup_df["Home Pt Diff"] > 21
-
-    for col in [
-        "Hm_PtMargin-21+",
-        "Hm_PtMargin-21",
-        "Hm_PtMargin-14",
-        "Hm_PtMargin-10",
-        "Hm_PtMargin-7",
-        "Hm_PtMargin-3",
-        "Hm_PtMargin-1",
-        "Hm_PtMargin1",
-        "Hm_PtMargin3",
-        "Hm_PtMargin7",
-        "Hm_PtMargin10",
-        "Hm_PtMargin14",
-        "Hm_PtMargin21",
-        "Hm_PtMargin21+",
-    ]:
-        matchup_df[f"{col}"] = matchup_df[f"{col}"].replace({True: 1, False: 0})
-    """
 
     # make sure only data from before "today"
     matchup_df = matchup_df[
@@ -450,16 +348,6 @@ def single_game_model(data_seasons, today, matchup):
     )
     # join back to matchup_df
     matchup_df = pd.concat([matchup_df, hm_conf_dummy_df, aw_conf_dummy_df], axis=1)
-
-    # build point margin variables (+7, +3, -3, -7)
-    matchup_df["Hm +7"] = matchup_df["Home Pt Diff"] > 7
-    matchup_df["Hm +3"] = matchup_df["Home Pt Diff"] > 3
-    matchup_df["Hm -3"] = matchup_df["Home Pt Diff"] < 3
-    matchup_df["Hm -7"] = matchup_df["Home Pt Diff"] < 7
-
-    tf_dict = {True: 1, False: 0}
-    for col in ["Hm +7", "Hm +3", "Hm -3", "Hm -7"]:
-        matchup_df[f"{col}"] = matchup_df[f"{col}"].map(tf_dict)
 
     # data for the matchup
     hm_tm = matchup.split(" vs. ")[1]
@@ -492,8 +380,6 @@ def single_game_model(data_seasons, today, matchup):
     matchup_data["Aw_FGpct"] = matchup_data["Aw_FGpct"].fillna(0)
     matchup_data["Hm_FGpct"] = matchup_data["Hm_FGpct"].fillna(0)
 
-    # TODO: need to add in Home and Away Elo
-    # matchup_data['']
     season = matchup_data["Hm_Season"][0]
     matchup_teams = [
         matchup_data["Matchup"][0].split(" vs. ")[0],
@@ -542,85 +428,6 @@ def single_game_model(data_seasons, today, matchup):
             matchup_data[f"{col}"] = 0
 
     """
-    # get team ratings
-    tm_ratings = tm_rating(data_seasons[-1], today)
-    aw_tm_rating = (
-        tm_ratings[tm_ratings["Tm"] == aw_tm]
-        .reset_index(drop=True)
-        .rename(
-            columns={
-                "Tm": "Aw_Tm",
-                "Tm Rank": "Aw_Rank",
-            }
-        )
-    )
-    hm_tm_rating = (
-        tm_ratings[tm_ratings["Tm"] == hm_tm]
-        .reset_index(drop=True)
-        .rename(
-            columns={
-                "Tm": "Hm_Tm",
-                "Tm Rank": "Hm_Rank",
-            }
-        )
-    )
-    
-
-    # join to matchup_data
-    matchup_data = matchup_data.merge(
-        aw_tm_rating[["Aw_Tm", "Aw_Rank"]], how="inner", on=["Aw_Tm"]
-    ).merge(hm_tm_rating[["Hm_Tm", "Hm_Rank"]], how="inner", on=["Hm_Tm"])
-    matchup_data = matchup_data.rename(
-        columns={"Hm_Rank": "Home Rk", "Aw_Rank": "Away Rk", "Hm_Season": "Season"}
-    ).drop(columns=["Aw_Season"])
-    
-    # if NCAA Tourney game get seed
-    if game_details["NCAA Tourney Game"]:
-        seeding_df = pd.read_csv(
-            f"~/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/march_madness/csv_files/season_bracketology.csv",
-        )
-        season_seeds = seeding_df[seeding_df["season"] == data_seasons[-1]]
-
-        # away seed
-        aw_seed = (
-            season_seeds[season_seeds["tm"] == aw_tm]
-            .reset_index(drop=True)
-            .rename(
-                columns={
-                    "tm": "Aw_Tm",
-                    "seed": "Aw_Seed",
-                }
-            )
-        )
-        # home seed
-        hm_seed = (
-            season_seeds[season_seeds["tm"] == hm_tm]
-            .reset_index(drop=True)
-            .rename(
-                columns={
-                    "tm": "Hm_Tm",
-                    "seed": "Hm_Seed",
-                }
-            )
-        )
-        # join to matchup_data
-        matchup_data = matchup_data.merge(
-            aw_seed[["Aw_Tm", "Aw_Seed"]], how="inner", on=["Aw_Tm"]
-        ).merge(hm_seed[["Hm_Tm", "Hm_Seed"]], how="inner", on=["Hm_Tm"])
-    else:
-        matchup_data["Aw_Seed"] = pd.NA
-        matchup_data["Hm_Seed"] = pd.NA
-    
-    # additional matchup details
-    matchup_data["Neutral Game"] = [game_details["Neutral Game"]]
-    matchup_data["Conference Game"] = [game_details["Conference Game"]]
-    matchup_data["Postseason Game"] = [game_details["Postseason Game"]]
-    matchup_data["NCAA Tourney Game"] = [game_details["NCAA Tourney Game"]]
-
-    matchup_data = matchup_data.fillna(np.nan)
-    """
-
-    """
         Build Out Model
     """
     # Exclude Playoff Games for now
@@ -636,10 +443,6 @@ def single_game_model(data_seasons, today, matchup):
                 "Hm_TmDiv",
                 "Home W",
                 "Home Pt Diff",
-                "Hm +7",
-                "Hm +3",
-                "Hm -3",
-                "Hm -7",
                 "Divisional Game",
                 "Away Team",
                 "Away Elo",
@@ -751,10 +554,6 @@ def single_game_model(data_seasons, today, matchup):
             "Matchup",
             "Game Date",
             "Home Pt Diff",
-            "Hm +7",
-            "Hm +3",
-            "Hm -3",
-            "Hm -7",
             "Home Elo",
             "Away Elo",
             "Aw_PassOffEff",
@@ -819,10 +618,6 @@ def single_game_model(data_seasons, today, matchup):
                     "Away Team",
                     "Game Date",
                     "Home Pt Diff",
-                    "Hm +7",
-                    "Hm +3",
-                    "Hm -3",
-                    "Hm -7",
                     "Home Elo",
                     "Away Elo",
                     # # excluded and put in as dummy variable
@@ -842,10 +637,6 @@ def single_game_model(data_seasons, today, matchup):
                     "Home Pt Diff",
                     "Hm_Pts",
                     "Aw_Pts",
-                    "Hm +7",
-                    "Hm +3",
-                    "Hm -3",
-                    "Hm -7",
                     "Home Elo",
                     "Away Elo",
                     # # excluded and put in as dummy variable
@@ -891,15 +682,6 @@ def single_game_model(data_seasons, today, matchup):
                 p=1,
             )
             model.fit(X_train, np.ravel(y_train))
-
-        elif target_variable in ["Home Pt Margin"]:
-            model = KNeighborsClassifier(
-                n_neighbors=25,
-                weights="uniform",
-                metric="cityblock",
-            )
-            model.fit(X_train, np.ravel(y_train))
-
         else:
             model = KNeighborsRegressor(
                 n_neighbors=55,
@@ -909,7 +691,6 @@ def single_game_model(data_seasons, today, matchup):
             model.fit(X_train, np.ravel(y_train))
 
         # suppress scientific notation
-        # logger.info(f"predicting test set")
         np.set_printoptions(suppress=True)
         predictions = model.predict(X_test)
         if target_variable in ["Home W"]:
@@ -1187,13 +968,6 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
         "Tm Name"
     ][0]
 
-    # away_tm_color = team_df[
-    #     (team_df["Tm Name"] == away_tm)
-    # ].reset_index(drop=True)["Tm Primary Color"][0]
-    # home_tm_color = team_df[
-    #     (team_df["Tm Name"] == home_tm)
-    # ].reset_index(drop=True)["Tm Primary Color"][0]
-
     stdev = 10
 
     if sim_results_df["Win Prob."][0] > sim_results_df["Win Prob."][1]:
@@ -1212,21 +986,6 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
 
     sim_results = [gm_winner, pt_spread, away_win_prob, home_win_prob]
     win_prob = [away_win_prob, home_win_prob]
-
-    # relabel margin of victory for image
-    # if sim_results[1] == 21:
-    #     mov = "21+"
-    # elif sim_results[1] == 14:
-    #     mov = "14-20"
-    # elif sim_results[1] == 10:
-    #     mov = "10-13"
-    # elif sim_results[1] == 7:
-    #     mov = "7-9"
-    # elif sim_results[1] == 3:
-    #     mov = "3-6"
-    # elif sim_results[1] == 0:
-    #     mov = "1-2"
-    mov = sim_results[1]
 
     home_tm_color_prim = get_teamcolor_prim(home_tm)
     home_tm_color_sec = get_teamcolor_sec(home_tm)
@@ -1320,3 +1079,4 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.suptitle("Win Probability", x=0.5, y=0.92, fontsize=10)
 
     return plt.show()
+
