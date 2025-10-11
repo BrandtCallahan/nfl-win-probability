@@ -346,7 +346,7 @@ def save_team_stats(season_year, team_name_list, today):
         # pull out .csv
         try:
             season_gamelogs = pd.read_csv(
-                f"~/nfl/csv_files/season{season_year}_tm_gamelogs.csv",
+                f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
             )
             season_gamelogs = season_gamelogs.astype(
                 {
@@ -924,4 +924,5 @@ def game_results(season, save=False):
         )
 
     return season_gm_results
+
 
