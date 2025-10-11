@@ -445,7 +445,12 @@ def tm_elo_rating(season_year, today):
         team_elo = team_elo.drop_duplicates(subset=["Tm"], keep="last")
 
         if (season_year == 2017) & (g == 1):
-            team_elo = pd.concat([team_elo, pd.DataFrame(data={'Tm': ['TAM', 'MIA'], 'Tm Elo2': [1500, 1500]})])
+            team_elo = pd.concat(
+                [
+                    team_elo,
+                    pd.DataFrame(data={"Tm": ["TAM", "MIA"], "Tm Elo2": [1500, 1500]}),
+                ]
+            )
 
         tmp_gamelog = team_gamelog[team_gamelog["Week"] == (g + 1)]
 
@@ -469,12 +474,127 @@ def tm_elo_rating(season_year, today):
             .reset_index(drop=True)
         )
 
-        team_gamelog['Date'] = pd.to_datetime(team_gamelog['Date'])
-        team_gamelog = team_gamelog.drop_duplicates(['Tm', 'Opp', 'Date']).reset_index(drop=True)
+        team_gamelog["Date"] = pd.to_datetime(team_gamelog["Date"])
+        team_gamelog = team_gamelog.drop_duplicates(["Tm", "Opp", "Date"]).reset_index(
+            drop=True
+        )
 
     elo_df = team_gamelog[["Week", "Date", "Tm", "Tm Elo", "Opp", "Opp Elo"]]
 
     return elo_df
+
+
+def tm_lg_ranking(season_year, today):
+
+    # read out gamelog
+    team_gamelog = pd.read_csv(
+        f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
+    )
+    # only games less than "today"
+    team_gamelog = team_gamelog[
+        (team_gamelog["Date"].astype("datetime64[ns]") <= pd.to_datetime(today))
+    ].reset_index(drop=True)
+
+    # set initial lg rankings
+    team_gamelog.loc[team_gamelog["Week"] == 1, "Tm Rnk"] = 1
+    team_gamelog.loc[team_gamelog["Week"] == 1, "Opp Rnk"] = 1
+
+    team_gamelog.loc[team_gamelog["Week"] == 1, "Tm W"] = 0
+    team_gamelog.loc[team_gamelog["Week"] == 1, "Opp W"] = 0
+
+    # list of possible weeks
+    week_list = team_gamelog["Week"].unique().tolist()
+    week_list.sort()
+    week_list = week_list[:-1]
+
+    team_rnk = pd.DataFrame()
+    for g in week_list:
+
+        tmp_gm = team_gamelog[team_gamelog["Week"] == g].reset_index(drop=True)
+
+        # Tm Win/Loss
+        tmp_gm.loc[tmp_gm["W/L"] == "W", "Tm W"] = (
+            tmp_gm.loc[tmp_gm["W/L"] == "W"]["Tm W"] + 1
+        )
+        tmp_gm.loc[tmp_gm["W/L"] == "L", "Tm W"] = tmp_gm.loc[tmp_gm["W/L"] == "L"][
+            "Tm W"
+        ]
+
+        # Opp Win/Loss
+        tmp_gm.loc[tmp_gm["W/L"] == "W", "Opp W"] = tmp_gm.loc[tmp_gm["W/L"] == "W"][
+            "Opp W"
+        ]
+        tmp_gm.loc[tmp_gm["W/L"] == "L", "Opp W"] = (
+            tmp_gm.loc[tmp_gm["W/L"] == "L"]["Opp W"] + 1
+        )
+
+        # Tm W%
+        tmp_gm["W%"] = tmp_gm["Tm W"] / tmp_gm["G"]
+
+        tmp_df = (
+            tmp_gm[["Tm", "Tm W", "W%"]]
+            .reset_index(drop=True)
+            .rename(
+                columns={
+                    "W%": "W% 2",
+                    "Tm W": "Tm W 2",
+                }
+            )
+        )
+        tmp_df["Lg Rnk"] = tmp_df["W% 2"].rank(method="min", ascending=False)
+        tmp_df = tmp_df.drop(columns=['W% 2'])
+
+        # accomodate for bye week
+        if team_rnk.empty:
+            team_rnk = tmp_df.copy()
+        else:
+            team_rnk = pd.concat([team_rnk, tmp_df]).reset_index(drop=True)
+
+        team_rnk = team_rnk.drop_duplicates(subset=["Tm"], keep="last")
+
+        # Tampa Bay and Miami had a Week 1 bye in 2017
+        if (season_year == 2017) & (g == 1):
+            team_rnk = pd.concat(
+                [
+                    team_rnk,
+                    pd.DataFrame(data={"Tm": ["TAM", "MIA"], "Tm W 2": [0, 0], "Lg Rnk": [1, 1]}),
+                ]
+            )
+
+        tmp_gamelog = team_gamelog[team_gamelog["Week"] == (g + 1)]
+
+        tmp_gamelog = tmp_gamelog.merge(team_rnk, how="left", on=["Tm"])
+        tmp_gamelog["Tm W"] = tmp_gamelog["Tm W"].fillna(tmp_gamelog["Tm W 2"])
+        tmp_gamelog = tmp_gamelog.drop(columns=["Tm W 2"])
+        tmp_gamelog['Tm Rnk'] = tmp_gamelog["Tm Rnk"].fillna(tmp_gamelog["Lg Rnk"])
+        tmp_gamelog = tmp_gamelog.drop(columns=["Lg Rnk"])
+
+        # put the new opponent elo in for the next week
+        tmp_gamelog = (
+            tmp_gamelog.merge(team_rnk, how="left", left_on=["Opp"], right_on=["Tm"])
+            .drop(columns={"Tm_y"})
+            .rename(columns={"Tm_x": "Tm"})
+        )
+        tmp_gamelog["Opp W"] = tmp_gamelog["Opp W"].fillna(tmp_gamelog["Tm W 2"])
+        tmp_gamelog = tmp_gamelog.drop(columns=["Tm W 2"])
+        tmp_gamelog['Opp Rnk'] = tmp_gamelog["Opp Rnk"].fillna(tmp_gamelog["Lg Rnk"])
+        tmp_gamelog = tmp_gamelog.drop(columns=["Lg Rnk"])
+
+        team_gamelog = (
+            pd.concat([team_gamelog, tmp_gamelog])
+            .drop_duplicates(subset=["Tm", "Opp", "Week", "Date"], keep="last")
+            .sort_values(by=["Tm", "G", "Week"])
+            .reset_index(drop=True)
+        )
+
+        team_gamelog["Date"] = pd.to_datetime(team_gamelog["Date"])
+        team_gamelog = team_gamelog.drop_duplicates(["Tm", "Opp", "Date"]).reset_index(
+            drop=True
+        )
+
+    rnk_df = team_gamelog[["Week", "Date", "Tm", "Tm Rnk", "Opp", "Opp Rnk"]]
+
+    return rnk_df
 
 
 # TODO: edit game_results() for neutral games with ratings (tm_elo_rating())
@@ -804,3 +924,4 @@ def game_results(season, save=False):
         )
 
     return season_gm_results
+
