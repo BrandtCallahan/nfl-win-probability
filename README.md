@@ -5,11 +5,12 @@ The nfl_singlegame.py file holds the run_model() function that will allow you to
 
 To ouput this Colts vs. Titans game:
 
-run_model(
-    season=2025,
-    today=pd.to_datetime('2025-09-21').strftime('%Y-%m-%d'),
-    num_season=10,
-    matchup=[['IND', 'TEN']],
-    visualize=True,
+run_model(<br>
+    &emsp;season=2025,<br>
+    &emsp;today=pd.to_datetime('2025-09-21').strftime('%Y-%m-%d'),<br>
+    &emsp;num_season=10,<br>
+    &emsp;matchup=[['IND', 'TEN']],<br>
+    &emsp;visualize=True,<br>
 )
+
 <img width="640" height="480" alt="ind_v_ten_0921" src="https://github.com/user-attachments/assets/fc170928-ca1e-4894-8718-4ac0d511f6a5" />
