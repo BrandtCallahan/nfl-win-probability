@@ -11,15 +11,6 @@ import matplotlib.pyplot as plt
 from PIL import Image
 import plotly.graph_objects as go
 import matplotlib.image as mpimg
-from sklearn.linear_model import (
-    LinearRegression,
-    LogisticRegression,
-)
-from sklearn.ensemble import (
-    HistGradientBoostingClassifier,
-    HistGradientBoostingRegressor,
-    RandomForestClassifier,
-)
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     confusion_matrix,
@@ -96,12 +87,15 @@ def gamelog_setup(season, tm_name, gm_date):
     team_gamelog["Streak Id"] = team_gamelog["Start Streak"].cumsum()
     team_gamelog["Running Streak"] = team_gamelog.groupby("Streak Id").cumcount() + 1
 
-    # W Streak == +, L Streak == -
+    # W Streak == +, L Streak == -, Tie == 0
     team_gamelog.loc[team_gamelog["W/L"] == "W", "Streak +/-"] = team_gamelog[
         "Running Streak"
     ]
     team_gamelog.loc[team_gamelog["W/L"] == "L", "Streak +/-"] = (
         team_gamelog["Running Streak"] * -1
+    )
+    team_gamelog.loc[team_gamelog["W/L"] == "T", "Streak +/-"] = (
+        0
     )
     team_gamelog["Streak +/-"] = team_gamelog["Streak +/-"].astype(int)
     team_gamelog = team_gamelog.drop(
@@ -133,9 +127,8 @@ def gamelog_setup(season, tm_name, gm_date):
         team_gamelog["Rush Off Eff"] - gamelog["Rush Y/A"].median()
     )
     # offense efficency
-    team_gamelog["Off Eff"] = (
-        team_gamelog["Adj Pass Off Eff"] + team_gamelog["Adj Rush Off Eff"]
-    )
+    # defined as Points per Possession
+    team_gamelog["Off Eff"] = team_gamelog["Tm Pts"] / team_gamelog["Poss"]
 
     # defense ratings
     team_gamelog["Pass Def Eff"] = team_gamelog["Opp Pass Rate"].astype(float)
@@ -146,9 +139,7 @@ def gamelog_setup(season, tm_name, gm_date):
         team_gamelog["Rush Def Eff"] - gamelog["Opp Rush Y/A"].median()
     )
     # defense efficency
-    team_gamelog["Def Eff"] = (
-        team_gamelog["Adj Pass Def Eff"] + team_gamelog["Adj Rush Def Eff"]
-    )
+    team_gamelog["Def Eff"] = team_gamelog["Opp Pts"] / team_gamelog["Opp Poss"]
 
     # tm effieciency rating
     team_gamelog["Tm Eff"] = team_gamelog["Off Eff"] - team_gamelog["Def Eff"]
@@ -204,10 +195,14 @@ def rolling_gamedata(season, hm_tm, aw_tm, gm_date):
             RushOffEff=("Adj Rush Off Eff", "median"),
             PassDefEff=("Adj Pass Def Eff", "median"),
             RushDefEff=("Adj Rush Def Eff", "median"),
+            TmOffEff=("Off Eff", "median"),
+            TmDefEff=("Def Eff", "median"),
+            TmEff=("Tm Eff", "median"),
             TmLuckW=("Tm Luck", "sum"),
             Pts=("Tm Pts", "median"),
             OppPts=("Opp Pts", "median"),
             TmDiv=("Tm Div", "first"),
+            WStreak=("Streak +/-", "last"),
             # start boxscore stats
             PassCmppct=("Pass Cmp %", "median"),
             PassAdjYdsAtt=("Pass Adj Y/A", "median"),
@@ -281,8 +276,10 @@ def season_data(season):
                             "Matchup",
                             "Home Team",
                             "Home Elo",
+                            "Home Lg Rank",
                             "Away Team",
                             "Away Elo",
+                            "Away Lg Rank",
                             "Home W",
                             "Home Pt Diff",
                             # "Neutral Game",
@@ -294,7 +291,7 @@ def season_data(season):
                     left_on=["Matchup", "Aw_Tm", "Hm_Tm"],
                     right_on=["Matchup", "Away Team", "Home Team"],
                 )
-
+                
                 season_df = (
                     pd.concat([season_df, gamelog_stats])
                     .drop_duplicates(subset=["Matchup", "Game Date"])
@@ -310,7 +307,7 @@ def season_data(season):
 
     # save .csv file
     season_df.to_csv(
-        f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
+       f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         index=False,
     )
 
@@ -326,9 +323,12 @@ def single_game_model(data_seasons, today, matchup):
             f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
-
+        tmp_df.shape
         # concat all years of data into one df
-        matchup_df = pd.concat([matchup_df, tmp_df]).reset_index(drop=True)
+        if matchup_df.empty:
+            matchup_df = tmp_df.copy()
+        else:
+            matchup_df = pd.concat([matchup_df, tmp_df]).reset_index(drop=True)
 
     # make sure only data from before "today"
     matchup_df = matchup_df[
@@ -348,6 +348,16 @@ def single_game_model(data_seasons, today, matchup):
     )
     # join back to matchup_df
     matchup_df = pd.concat([matchup_df, hm_conf_dummy_df, aw_conf_dummy_df], axis=1)
+
+    # build point margin variables (+7, +3, -3, -7)
+    matchup_df["Hm +7"] = matchup_df["Home Pt Diff"] > 7
+    matchup_df["Hm +3"] = matchup_df["Home Pt Diff"] > 3
+    matchup_df["Hm -3"] = matchup_df["Home Pt Diff"] < 3
+    matchup_df["Hm -7"] = matchup_df["Home Pt Diff"] < 7
+
+    tf_dict = {True: 1, False: 0}
+    for col in ["Hm +7", "Hm +3", "Hm -3", "Hm -7"]:
+        matchup_df[f"{col}"] = matchup_df[f"{col}"].map(tf_dict)
 
     # data for the matchup
     hm_tm = matchup.split(" vs. ")[1]
@@ -380,6 +390,7 @@ def single_game_model(data_seasons, today, matchup):
     matchup_data["Aw_FGpct"] = matchup_data["Aw_FGpct"].fillna(0)
     matchup_data["Hm_FGpct"] = matchup_data["Hm_FGpct"].fillna(0)
 
+    # matchup_data['']
     season = matchup_data["Hm_Season"][0]
     matchup_teams = [
         matchup_data["Matchup"][0].split(" vs. ")[0],
@@ -446,8 +457,13 @@ def single_game_model(data_seasons, today, matchup):
                 "Divisional Game",
                 "Away Team",
                 "Away Elo",
+                "Away Lg Rank",
+                "Aw_TmOffEff",
+                "Aw_TmDefEff",
+                "Aw_TmEff",
                 "Aw_W",
                 "Aw_Wpct",
+                "Aw_WStreak",
                 "Aw_Poss",
                 "Aw_OppPoss",
                 "Aw_PassOffEff",
@@ -487,8 +503,13 @@ def single_game_model(data_seasons, today, matchup):
                 "Aw_TmDiv_NFC West",
                 "Home Team",
                 "Home Elo",
+                "Home Lg Rank",
+                "Hm_TmOffEff",
+                "Hm_TmDefEff",
+                "Hm_TmEff",
                 "Hm_W",
                 "Hm_Wpct",
+                "Hm_WStreak",
                 "Hm_Poss",
                 "Hm_OppPoss",
                 "Hm_PassOffEff",
@@ -554,25 +575,28 @@ def single_game_model(data_seasons, today, matchup):
             "Matchup",
             "Game Date",
             "Home Pt Diff",
-            "Home Elo",
-            "Away Elo",
+            "Aw_TmOffEff",
+            "Aw_TmEff",
+            "Aw_W",
+            "Aw_WStreak",
             "Aw_PassOffEff",
             "Aw_Pts",
             "Aw_PassCmppct",
             "Aw_PassAdjYdsAtt",
             "Aw_PassTDG",
             "Aw_Dwn3Conv",
-            "Aw_OppRushYdsAtt",
             "Aw_OppTOVG",
             "Aw_OppDwn3Conv",
             "Aw_TmLuck",
-            "Aw_TmDiv_NFC West",
+            "Hm_TmOffEff",
+            "Hm_TmEff",
             "Hm_W",
+            "Hm_WStreak",
             "Hm_Poss",
-            "Hm_PassOffEff",
             "Hm_RushOffEff",
             "Hm_TmLuckW",
             "Hm_Pts",
+            "Hm_OppPts",
             "Hm_PassCmppct",
             "Hm_PassAdjYdsAtt",
             "Hm_RushYdsAtt",
@@ -582,11 +606,20 @@ def single_game_model(data_seasons, today, matchup):
             "Hm_OppTOVG",
             "Hm_OppDwn3Conv",
             "Hm_TmLuck",
-            "Hm_TmDiv_AFC North",
-            "Hm_TmDiv_NFC South",
             "Elo_diff",
+            "Home Elo",
+            "Away Elo",
+            "Home Lg Rank",
+            "Away Lg Rank",
         ]
-    ]
+    ].astype(
+        {
+            "Aw_WStreak": "float64",
+            "Hm_WStreak": "float64",
+            'Home Pt Diff': "float64",
+            'Home W': 'float64',
+        }
+    )
 
     """
         Set Target Variables/DFs
@@ -610,7 +643,7 @@ def single_game_model(data_seasons, today, matchup):
         ]
         model_y = y.drop(columns=["Matchup"])
 
-        if target_variable in ['Home W', 'Home Pt Diff']:
+        if target_variable in ["Home W", "Home Pt Diff"]:
             X = model_df.drop(
                 columns=[
                     "Home W",
@@ -618,11 +651,6 @@ def single_game_model(data_seasons, today, matchup):
                     "Away Team",
                     "Game Date",
                     "Home Pt Diff",
-                    "Home Elo",
-                    "Away Elo",
-                    # # excluded and put in as dummy variable
-                    # "Aw_TmDiv",
-                    # "Hm_TmDiv",
                     f"{target_variable}",
                 ]
             )
@@ -637,11 +665,6 @@ def single_game_model(data_seasons, today, matchup):
                     "Home Pt Diff",
                     "Hm_Pts",
                     "Aw_Pts",
-                    "Home Elo",
-                    "Away Elo",
-                    # # excluded and put in as dummy variable
-                    # "Aw_TmDiv",
-                    # "Hm_TmDiv",
                     f"{target_variable}",
                 ]
             )
@@ -682,15 +705,17 @@ def single_game_model(data_seasons, today, matchup):
                 p=1,
             )
             model.fit(X_train, np.ravel(y_train))
+
         else:
             model = KNeighborsRegressor(
-                n_neighbors=55,
+                n_neighbors=100,
                 weights="distance",
                 metric="cityblock",
             )
             model.fit(X_train, np.ravel(y_train))
 
         # suppress scientific notation
+        # logger.info(f"predicting test set")
         np.set_printoptions(suppress=True)
         predictions = model.predict(X_test)
         if target_variable in ["Home W"]:
@@ -700,7 +725,7 @@ def single_game_model(data_seasons, today, matchup):
         #   i.e. the second number of the array for each index
         w_prob = []
         w_pred = []
-        for i in range(len(predict_prob)):
+        for i in range(len(predictions)):
             tmp_pred = predictions[i]
             w_pred += [tmp_pred]
 
@@ -752,9 +777,7 @@ def single_game_model(data_seasons, today, matchup):
             )
             model_stats_df["Target Variable"] = [target_variable]
             model_stats_df["R^2"] = [model.score(X_test, y_test)]
-            model_stats_df["RMSE"] = [
-                np.sqrt(mean_squared_error(y_test, predictions))
-            ]
+            model_stats_df["RMSE"] = [np.sqrt(mean_squared_error(y_test, predictions))]
             model_stats_df["Recall Score"] = [
                 recall_score(y_test, predictions)
             ]  # tp / (tp + fn)
@@ -788,58 +811,31 @@ def single_game_model(data_seasons, today, matchup):
         """
         logger.info(f"predicting {target_variable}: {matchup_data["Matchup"][0]}")
 
-        if target_variable in ['Home W', 'Home Pt Diff']:
-            prediction_df = matchup_data[
-            [
-                "Aw_PassOffEff",
-                "Aw_Pts",
-                "Aw_PassCmppct",
-                "Aw_PassAdjYdsAtt",
-                "Aw_PassTDG",
-                "Aw_Dwn3Conv",
-                "Aw_OppRushYdsAtt",
-                "Aw_OppTOVG",
-                "Aw_OppDwn3Conv",
-                "Aw_TmLuck",
-                "Aw_TmDiv_NFC West",
-                "Hm_W",
-                "Hm_Poss",
-                "Hm_PassOffEff",
-                "Hm_RushOffEff",
-                "Hm_TmLuckW",
-                "Hm_Pts",
-                "Hm_PassCmppct",
-                "Hm_PassAdjYdsAtt",
-                "Hm_RushYdsAtt",
-                "Hm_RushTDG",
-                "Hm_Dwn3Conv",
-                "Hm_OppPassAdjYdsAtt",
-                "Hm_OppTOVG",
-                "Hm_OppDwn3Conv",
-                "Hm_TmLuck",
-                "Hm_TmDiv_AFC North",
-                "Hm_TmDiv_NFC South",
-                "Elo_diff",
-            ]
-        ]
-        else:
+        if target_variable in ["Home W", "Home Pt Diff"]:
             prediction_df = matchup_data[
                 [
+                    "Aw_TmOffEff",
+                    "Aw_TmEff",
+                    "Aw_W",
+                    "Aw_WStreak",
                     "Aw_PassOffEff",
+                    "Aw_Pts",
                     "Aw_PassCmppct",
                     "Aw_PassAdjYdsAtt",
                     "Aw_PassTDG",
                     "Aw_Dwn3Conv",
-                    "Aw_OppRushYdsAtt",
                     "Aw_OppTOVG",
                     "Aw_OppDwn3Conv",
                     "Aw_TmLuck",
-                    "Aw_TmDiv_NFC West",
+                    "Hm_TmOffEff",
+                    "Hm_TmEff",
                     "Hm_W",
+                    "Hm_WStreak",
                     "Hm_Poss",
-                    "Hm_PassOffEff",
                     "Hm_RushOffEff",
                     "Hm_TmLuckW",
+                    "Hm_Pts",
+                    "Hm_OppPts",
                     "Hm_PassCmppct",
                     "Hm_PassAdjYdsAtt",
                     "Hm_RushYdsAtt",
@@ -849,9 +845,50 @@ def single_game_model(data_seasons, today, matchup):
                     "Hm_OppTOVG",
                     "Hm_OppDwn3Conv",
                     "Hm_TmLuck",
-                    "Hm_TmDiv_AFC North",
-                    "Hm_TmDiv_NFC South",
                     "Elo_diff",
+                    "Home Elo",
+                    "Away Elo",
+                    "Home Lg Rank",
+                    "Away Lg Rank",
+                ]
+            ]
+        else:
+            prediction_df = matchup_data[
+                [
+                    "Aw_TmOffEff",
+                    "Aw_TmEff",
+                    "Aw_W",
+                    "Aw_WStreak",
+                    "Aw_PassOffEff",
+                    "Aw_PassCmppct",
+                    "Aw_PassAdjYdsAtt",
+                    "Aw_PassTDG",
+                    "Aw_Dwn3Conv",
+                    "Aw_OppTOVG",
+                    "Aw_OppDwn3Conv",
+                    "Aw_TmLuck",
+                    "Hm_TmOffEff",
+                    "Hm_TmEff",
+                    "Hm_W",
+                    "Hm_WStreak",
+                    "Hm_Poss",
+                    "Hm_RushOffEff",
+                    "Hm_TmLuckW",
+                    "Hm_OppPts",
+                    "Hm_PassCmppct",
+                    "Hm_PassAdjYdsAtt",
+                    "Hm_RushYdsAtt",
+                    "Hm_RushTDG",
+                    "Hm_Dwn3Conv",
+                    "Hm_OppPassAdjYdsAtt",
+                    "Hm_OppTOVG",
+                    "Hm_OppDwn3Conv",
+                    "Hm_TmLuck",
+                    "Elo_diff",
+                    "Home Elo",
+                    "Away Elo",
+                    "Home Lg Rank",
+                    "Away Lg Rank",
                 ]
             ]
         # prediction_df = prediction_df[limit_X_train.feature.tolist()]
@@ -865,7 +902,7 @@ def single_game_model(data_seasons, today, matchup):
         #   i.e. the second number of the array for each index
         w_prob = []
         w_pred = []
-        for i in range(len(prediction_prob)):
+        for i in range(len(prediction)):
             tmp_pred = prediction[i]
             w_pred += [tmp_pred]
 
@@ -932,6 +969,18 @@ def single_game_model(data_seasons, today, matchup):
             drop=True
         )
 
+    # ensure no tie (home team +1)
+    if (
+        round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
+    ) & (final_pred_df["Home W Probability"][0] > 0.5):
+        hm_points = round(final_pred_df["Hm_Pts"][0], 0) + 1
+    elif (
+        round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
+    ) & (final_pred_df["Home W Probability"][0] < 0.5):
+        hm_points = round(final_pred_df["Hm_Pts"][0], 0) - 1
+    else:
+        hm_points = round(final_pred_df["Hm_Pts"][0], 0)
+
     # format a df to fit the donut chart
     sg_win = pd.DataFrame(
         data={
@@ -948,9 +997,9 @@ def single_game_model(data_seasons, today, matchup):
                 final_pred_df["Home Pt Diff"][0],
             ],
             "Pred. Pts": [
-                round(final_pred_df['Aw_Pts'][0], 0),
-                round(final_pred_df['Hm_Pts'][0], 0),
-            ]
+                round(final_pred_df["Aw_Pts"][0], 0),
+                hm_points,
+            ],
         }
     )
 
@@ -980,12 +1029,14 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
         pt_spread = abs(sim_results_df["Point Diff"][1])
         away_win_prob = sim_results_df["Win Prob."][0]
         home_win_prob = sim_results_df["Win Prob."][1]
-    
-    away_score = sim_results_df['Pred. Pts'][0]
-    home_score = sim_results_df['Pred. Pts'][1]
+
+    away_score = sim_results_df["Pred. Pts"][0]
+    home_score = sim_results_df["Pred. Pts"][1]
 
     sim_results = [gm_winner, pt_spread, away_win_prob, home_win_prob]
     win_prob = [away_win_prob, home_win_prob]
+
+    mov = sim_results[1]
 
     home_tm_color_prim = get_teamcolor_prim(home_tm)
     home_tm_color_sec = get_teamcolor_sec(home_tm)
@@ -1008,11 +1059,11 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     # Add team logos
     try:
         hm_img = Image.open(
-            f"C:/Users/bcallahan/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/logos/helmets/{home_tm} L.png"
+            f"~/nfl-win-probability/logos/helmets/{home_tm} L.png"
         )
         hm_img_array = np.array(hm_img)
         aw_img = Image.open(
-            f"C:/Users/bcallahan/OneDrive - Tennessee Titans/Documents/Python/professional_portfolio/nfl/logos/helmets/{away_tm} R.png"
+            f"~/nfl-win-probability/logos/helmets/{away_tm} R.png"
         )
         aw_img_array = np.array(aw_img)
     except:
@@ -1056,7 +1107,7 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.text(
         0,
         0,
-        f"Location: @ {home_tm}\n Score Prediction:\n\n {away_tm}: {int(away_score)}\n {home_tm}: {int(home_score)}",
+        f"Location: @ {home_tm}\n\n Total Pts: {int(away_score) + int(home_score)}\n Margin of Victory: {round(pt_spread, 1)}",
         # f"Location: @ {home_abbr}",
         ha="center",
         va="center",
@@ -1079,4 +1130,3 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.suptitle("Win Probability", x=0.5, y=0.92, fontsize=10)
 
     return plt.show()
-
