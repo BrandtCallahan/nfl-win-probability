@@ -1119,8 +1119,11 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
 
     # add team logos
     ## extent = [left x, right x, lower y, upper y]
-    # plt.imshow(aw_img, extent=[-1.65, -0.75, -1.25, -0.5])
-    # plt.imshow(hm_img, extent=[0.75, 1.65, -1.25, -0.5])
+    try:
+        plt.imshow(aw_img, extent=[-1.65, -0.75, -1.25, -0.5])
+        plt.imshow(hm_img, extent=[0.75, 1.65, -1.25, -0.5])
+    except:
+        pass
 
     # ensuring circle proportion
     plt.axis("equal")
