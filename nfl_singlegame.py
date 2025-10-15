@@ -162,8 +162,8 @@ nfl_df = run_model(
         ["ATL", "SFO"],
         ["TAM", "DET"],
         ["HOU", "SEA"],
-        
     ],
     visualize=False,
 )
+
 
