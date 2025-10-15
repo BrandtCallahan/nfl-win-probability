@@ -3,7 +3,7 @@ from datetime import datetime
 import os
 
 os.chdir(
-    f"C:/Users/{os.getlogin()}/nfl-win-probability"
+    f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability"
 )
 
 """
@@ -346,7 +346,7 @@ def save_team_stats(season_year, team_name_list, today):
         # pull out .csv
         try:
             season_gamelogs = pd.read_csv(
-                f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
+                f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
             )
             season_gamelogs = season_gamelogs.astype(
                 {
@@ -370,7 +370,7 @@ def save_team_stats(season_year, team_name_list, today):
         )
 
         add_tm.to_csv(
-            f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
             index=False,
         )
 
@@ -384,7 +384,7 @@ def tm_elo_rating(season_year, today):
 
     # read out gamelog
     team_gamelog = pd.read_csv(
-        f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
+        f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
     )
     # only games less than "today"
     team_gamelog = team_gamelog[
@@ -488,7 +488,7 @@ def tm_lg_ranking(season_year, today):
 
     # read out gamelog
     team_gamelog = pd.read_csv(
-        f"~/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
+        f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
     )
     # only games less than "today"
     team_gamelog = team_gamelog[
@@ -612,9 +612,11 @@ def game_results(season, save=False):
             "Matchup",
             "Home Team",
             "Home Elo",
+            "Home Lg Rank",
             "Home Pts",
             "Away Team",
             "Away Elo",
+            "Away Lg Rank",
             "Away Pts",
             "Home W",
             "Home Pt Diff",
@@ -631,7 +633,7 @@ def game_results(season, save=False):
 
         # read from saved boxscore .csv
         gmlog = pd.read_csv(
-            f"~/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
         )
         tm_gmlog = gmlog[gmlog["Tm"] == team_df["Tm Abbrv"][n]]
 
@@ -667,123 +669,6 @@ def game_results(season, save=False):
                 else:
                     playoff = 0
 
-                """
-                # check if game is neutral
-                if tmp_game["Location"] == "N":
-                    # order by alphabetical order for both teams
-                    tm_list = [tmp_game["Tm Name"], tmp_game["Opp"]]
-                    tm_list.sort()
-
-                    ratings = tm_rating(
-                        season,
-                        tmp_game["Date"],
-                    )
-                    try:
-                        tm_ratings = ratings[ratings["Tm"].isin(tm_list)].reset_index(
-                            drop=True
-                        )
-                        tm1 = tm_ratings["Tm"][0]
-                        tm2 = tm_ratings["Tm"][1]
-                    except KeyError:
-                        tm2 = "Unknown"
-
-                    if tm_ratings.empty:
-                        hm_rnk = pd.NA
-                        aw_rnk = pd.NA
-
-                    if tm2 != "Unknown" and not tm_ratings.empty:
-
-                        if ncaa == 1:
-                            seeding_df = pd.read_csv(
-                                f"~/nfl-win-probability/csv_files/season_bracketology.csv",
-                            )
-                            season_seed = seeding_df[seeding_df["season"] == season]
-
-                            # tm1 seed
-                            tm1_seed = season_seed[
-                                season_seed["tm"] == tmp_game["Tm Name"]
-                            ].reset_index(drop=True)["seed"][0]
-
-                            # tm2 seed
-                            tm2_seed = season_seed[
-                                season_seed["tm"] == tmp_game["Opp"]
-                            ].reset_index(drop=True)["seed"][0]
-
-                            if tm1_seed <= tm2_seed:
-                                hm_tm = tmp_game["Tm Name"]
-                                hm_rnk = tm_ratings[
-                                    tm_ratings["Tm"] == hm_tm
-                                ].reset_index(drop=True)["Tm Rank"][0]
-                                aw_tm = tmp_game["Opp"]
-                                aw_rnk = tm_ratings[
-                                    tm_ratings["Tm"] == aw_tm
-                                ].reset_index(drop=True)["Tm Rank"][0]
-                            else:
-                                hm_tm = tmp_game["Opp"]
-                                hm_rnk = tm_ratings[
-                                    tm_ratings["Tm"] == hm_tm
-                                ].reset_index(drop=True)["Tm Rank"][0]
-                                aw_tm = tmp_game["Tm Name"]
-                                aw_rnk = tm_ratings[
-                                    tm_ratings["Tm"] == aw_tm
-                                ].reset_index(drop=True)["Tm Rank"][0]
-                        else:
-
-                            if tm_ratings["Tm Rank"][0] < tm_ratings["Tm Rank"][1]:
-                                hm_tm = tm_ratings["Tm"][0]
-                                aw_tm = tm_ratings["Tm"][1]
-                                hm_rnk = tm_ratings["Tm Rank"][0]
-                                aw_rnk = tm_ratings["Tm Rank"][1]
-                            else:
-                                hm_tm = tm_ratings["Tm"][1]
-                                aw_tm = tm_ratings["Tm"][0]
-                                hm_rnk = tm_ratings["Tm Rank"][1]
-                                aw_rnk = tm_ratings["Tm Rank"][0]
-
-                    elif not tm_ratings.empty:
-                        hm_tm = tm_ratings["Tm"][0]
-                        hm_rnk = tm_ratings["Tm Rank"][0]
-                        aw_tm = tmp_game["Opp"]
-                        aw_rnk = ratings["Tm Rank"].max()
-                    else:
-                        hm_tm = tm_ratings["Tm"][0]
-                        aw_tm = tmp_game["Opp"]
-
-                    if hm_tm == tmp_game["Tm Name"]:
-                        hm_score = tmp_game["Tm Score"]
-                        aw_score = tmp_game["Opp Score"]
-                    else:
-                        hm_score = tmp_game["Opp Score"]
-                        aw_score = tmp_game["Tm Score"]
-
-                    hm_pt_diff = hm_score - aw_score
-                    if hm_pt_diff > 0:
-                        hm_w = 1
-                    else:
-                        hm_w = 0
-                    matchup = f"{aw_tm} vs. {hm_tm}"
-
-                    tmp_df = pd.DataFrame(
-                        data={
-                            "Game Date": [tmp_game["Date"]],
-                            "Location": ["Neutral"],
-                            "Neutral Game": [1],
-                            "Conference Game": [conference],
-                            "Bowl Game": [postseason],
-                            "Playoff Game": [ncaa],
-                            "Matchup": [matchup],
-                            "Home Team": [hm_tm],
-                            "Home Rk": [hm_rnk],
-                            "Home Score": [hm_score],
-                            "Away Team": [aw_tm],
-                            "Away Rk": [aw_rnk],
-                            "Away Score": [aw_score],
-                            "Home W": [hm_w],
-                            "Home Pt Diff": [hm_pt_diff],
-                        }
-                    )
-                """
-
                 if tmp_game["Location"] == "@":
                     tm_list = [tmp_game["Tm"], tmp_game["Opp"]]
 
@@ -810,6 +695,20 @@ def game_results(season, save=False):
                         hm_elo = pd.NA
                         aw_elo = pd.NA
 
+                    # lg rankings
+                    lg_ranking = tm_lg_ranking(
+                        season,
+                        tmp_game["Date"],
+                    )[["Tm", "Opp", "Tm Rnk", "Opp Rnk"]]
+                    aw_lgr = lg_ranking[
+                        (lg_ranking["Tm"] == tmp_game["Tm"])
+                        & (lg_ranking["Opp"] == tmp_game["Opp"])
+                    ].reset_index(drop=True)["Tm Rnk"][0]
+                    hm_lgr = lg_ranking[
+                        (lg_ranking["Tm"] == tmp_game["Tm"])
+                        & (lg_ranking["Opp"] == tmp_game["Opp"])
+                    ].reset_index(drop=True)["Opp Rnk"][0]
+
                     # win check
                     if tmp_game["Tm Pts"] > tmp_game["Opp Pts"]:
                         hm_tm_w = 0
@@ -835,9 +734,11 @@ def game_results(season, save=False):
                             "Matchup": [matchup],
                             "Home Team": [home_team],
                             "Home Elo": [hm_elo],
+                            "Home Lg Rank": [hm_lgr],
                             "Home Pts": [tmp_game["Opp Pts"]],
                             "Away Team": [team_df["Tm Abbrv"][n]],
                             "Away Elo": [aw_elo],
+                            "Away Lg Rank": [aw_lgr],
                             "Away Pts": [tmp_game["Tm Pts"]],
                             "Home W": [hm_tm_w],
                             "Home Pt Diff": [hm_pt_diff],
@@ -864,11 +765,25 @@ def game_results(season, save=False):
                             & (tm_ratings["Opp"] == tmp_game["Opp"])
                         ].reset_index(drop=True)["Opp Elo"][0]
                     except KeyError:
-                        aw_elo = ratings["Tm Rank"].min()
+                        aw_elo = ratings["Tm Elo"].min()
 
                     if tm_ratings.empty:
                         hm_elo = pd.NA
                         aw_elo = pd.NA
+
+                    # lg rankings
+                    lg_ranking = tm_lg_ranking(
+                        season,
+                        tmp_game["Date"],
+                    )[["Tm", "Opp", "Tm Rnk", "Opp Rnk"]]
+                    hm_lgr = lg_ranking[
+                        (lg_ranking["Tm"] == tmp_game["Tm"])
+                        & (lg_ranking["Opp"] == tmp_game["Opp"])
+                    ].reset_index(drop=True)["Tm Rnk"][0]
+                    aw_lgr = lg_ranking[
+                        (lg_ranking["Tm"] == tmp_game["Tm"])
+                        & (lg_ranking["Opp"] == tmp_game["Opp"])
+                    ].reset_index(drop=True)["Opp Rnk"][0]
 
                     # win check
                     if tmp_game["Tm Pts"] > tmp_game["Opp Pts"]:
@@ -895,9 +810,11 @@ def game_results(season, save=False):
                             "Matchup": [matchup],
                             "Home Team": [team_df["Tm Abbrv"][n]],
                             "Home Elo": [hm_elo],
+                            "Home Lg Rank": [hm_lgr],
                             "Home Pts": [tmp_game["Tm Pts"]],
                             "Away Team": [away_team],
                             "Away Elo": [aw_elo],
+                            "Away Lg Rank": [aw_lgr],
                             "Away Pts": [tmp_game["Opp Pts"]],
                             "Home W": [hm_tm_w],
                             "Home Pt Diff": [hm_pt_diff],
@@ -914,15 +831,13 @@ def game_results(season, save=False):
                 pass
             except ValueError:
                 pass
-
+            
     season_gm_results = season_gm_results.drop_duplicates()
 
     if save:
         season_gm_results.to_csv(
-            f"~/nfl-win-probability/csv_files/season{season}_results.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/season{season}_results.csv",
             index=False,
         )
 
     return season_gm_results
-
-

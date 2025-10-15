@@ -5,7 +5,7 @@ from utils.beautiful_soup_helper import *
 
 def get_teamnm():
     team_df = pd.read_csv(
-        f"~/nfl-win-probability/csv_files/team_df.csv"
+        f"~/personal-github/nfl-win-probability/csv_files/team_df.csv"
     )
 
     return team_df

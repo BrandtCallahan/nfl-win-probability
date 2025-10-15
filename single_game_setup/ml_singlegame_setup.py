@@ -41,7 +41,7 @@ def gamelog_setup(season, tm_name, gm_date):
 
     # pull data from csv_files folder
     gamelog = pd.read_csv(
-        f"~/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
     )
     team_gamelog = gamelog[gamelog["Tm"] == tm_df["Tm Abbrv"][0]]
 
@@ -252,7 +252,7 @@ def season_data(season):
 
     # read results df
     results_df = pd.read_csv(
-        f"~/nfl-win-probability/csv_files/season{season}_results.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/season{season}_results.csv",
     )
     season_df = pd.DataFrame()
 
@@ -291,7 +291,7 @@ def season_data(season):
                     left_on=["Matchup", "Aw_Tm", "Hm_Tm"],
                     right_on=["Matchup", "Away Team", "Home Team"],
                 )
-                
+
                 season_df = (
                     pd.concat([season_df, gamelog_stats])
                     .drop_duplicates(subset=["Matchup", "Game Date"])
@@ -307,7 +307,7 @@ def season_data(season):
 
     # save .csv file
     season_df.to_csv(
-       f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         index=False,
     )
 
@@ -320,7 +320,7 @@ def single_game_model(data_seasons, today, matchup):
     matchup_df = pd.DataFrame()
     for season in data_seasons:
         tmp_df = pd.read_csv(
-            f"~/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
         tmp_df.shape
@@ -1059,11 +1059,11 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     # Add team logos
     try:
         hm_img = Image.open(
-            f"~/nfl-win-probability/logos/helmets/{home_tm} L.png"
+            f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability/logos/helmets/{home_tm} L.png"
         )
         hm_img_array = np.array(hm_img)
         aw_img = Image.open(
-            f"~/nfl-win-probability/logos/helmets/{away_tm} R.png"
+            f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability/logos/helmets/{away_tm} R.png"
         )
         aw_img_array = np.array(aw_img)
     except:
@@ -1133,4 +1133,3 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.suptitle("Win Probability", x=0.5, y=0.92, fontsize=10)
 
     return plt.show()
-
