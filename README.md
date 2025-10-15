@@ -17,4 +17,4 @@ run_model(<br>
     &emsp;visualize=True,<br>
 )
 
-<img width="640" height="480" alt="nwe_v_ten_1019" src="https://github.com/user-attachments/assets/940c4207-3de1-4819-9d2c-7a27dc0cb2b8" />
+<img width="640" height="480" alt="nwe_v_ten_1019" src="https://github.com/user-attachments/assets/b1e489d8-492a-4f42-b33b-e9add51734e3" />
