@@ -142,13 +142,28 @@ nfl_df = run_model(
     visualize=False,
 )
 
-# week 7
+# Week 7
 nfl_df = run_model(
     season=2025,
     today=pd.to_datetime("2025-10-15").strftime("%Y-%m-%d"),
     num_seasons=10,
     matchup=[
+        ["PIT", "CIN"],
+        ["LAR", "JAX"],
         ["NWE", "TEN"],
+        ["NOR", "CHI"],
+        ["MIA", "CLE"],
+        ["LVR", "KAN"],
+        ["PHI", "MIN"],
+        ["NYG", "DEN"],
+        ["IND", "LAC"],
+        ["WAS", "DAL"],
+        ["GBP", "ARI"],
+        ["ATL", "SFO"],
+        ["TAM", "DET"],
+        ["HOU", "SEA"],
+        
     ],
     visualize=False,
 )
+
