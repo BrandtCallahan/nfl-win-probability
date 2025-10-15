@@ -78,7 +78,7 @@ def run_model(
         if visualize:
             # donut chart for single game
             sim_donut_graph(
-                season, away_tm, home_tm, sg_win, hm_tm_prim=True, aw_tm_prim=True
+                season=season, away_tm=away_tm, home_tm=home_tm, sim_results_df=sg_win, hm_tm_prim=True, aw_tm_prim=True
             )
 
         if nfl_df.empty:
@@ -133,6 +133,7 @@ nfl_df = run_model(
         ["SEA", "JAX"],
         ["LAR", "BAL"],
         ["TEN", "LVR"],
+        ['GBP', 'CIN'],
         ["SFO", "TAM"],
         ["DET", "KAN"],
         ["BUF", "ATL"],
@@ -141,3 +142,13 @@ nfl_df = run_model(
     visualize=False,
 )
 
+# week 7
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-10-15").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["NWE", "TEN"],
+    ],
+    visualize=False,
+)
