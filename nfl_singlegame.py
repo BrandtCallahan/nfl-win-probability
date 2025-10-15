@@ -133,7 +133,7 @@ nfl_df = run_model(
         ["SEA", "JAX"],
         ["LAR", "BAL"],
         ["TEN", "LVR"],
-        ['GBP', 'CIN'],
+        ['GNB', 'CIN'],
         ["SFO", "TAM"],
         ["DET", "KAN"],
         ["BUF", "ATL"],
@@ -158,12 +158,13 @@ nfl_df = run_model(
         ["NYG", "DEN"],
         ["IND", "LAC"],
         ["WAS", "DAL"],
-        ["GBP", "ARI"],
+        ["GNB", "ARI"],
         ["ATL", "SFO"],
         ["TAM", "DET"],
         ["HOU", "SEA"],
     ],
     visualize=False,
 )
+
 
 
