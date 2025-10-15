@@ -973,13 +973,13 @@ def single_game_model(data_seasons, today, matchup):
     if (
         round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
     ) & (final_pred_df["Home W Probability"][0] > 0.5):
-        hm_points = round(final_pred_df["Hm_Pts"][0], 0) + 1
+        hm_points = round(final_pred_df["Hm_Pts"][0], 1) + 1
     elif (
         round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
     ) & (final_pred_df["Home W Probability"][0] < 0.5):
-        hm_points = round(final_pred_df["Hm_Pts"][0], 0) - 1
+        hm_points = round(final_pred_df["Hm_Pts"][0], 1) - 1
     else:
-        hm_points = round(final_pred_df["Hm_Pts"][0], 0)
+        hm_points = round(final_pred_df["Hm_Pts"][0], 1)
 
     # format a df to fit the donut chart
     sg_win = pd.DataFrame(
@@ -997,7 +997,7 @@ def single_game_model(data_seasons, today, matchup):
                 final_pred_df["Home Pt Diff"][0],
             ],
             "Pred. Pts": [
-                round(final_pred_df["Aw_Pts"][0], 0),
+                round(final_pred_df["Aw_Pts"][0], 1),
                 hm_points,
             ],
         }
@@ -1032,6 +1032,8 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
 
     away_score = sim_results_df["Pred. Pts"][0]
     home_score = sim_results_df["Pred. Pts"][1]
+    # recalculate pt spread with tm scores
+    pt_spread = abs(home_score - away_score)
 
     sim_results = [gm_winner, pt_spread, away_win_prob, home_win_prob]
     win_prob = [away_win_prob, home_win_prob]
@@ -1107,7 +1109,7 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.text(
         0,
         0,
-        f"Location: @ {home_tm}\n\n Total Pts: {int(away_score) + int(home_score)}\n Margin of Victory: {round(pt_spread, 1)}",
+        f"Location: @ {home_tm}\n\n Total Pts: {int(round(away_score, 0)) + int(round(home_score, 0))}\n Margin of Victory: {round(pt_spread, 1)}",
         # f"Location: @ {home_abbr}",
         ha="center",
         va="center",
