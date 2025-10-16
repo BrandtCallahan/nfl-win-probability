@@ -2,6 +2,29 @@ import pandas as pd
 from datetime import datetime, timedelta
 from single_game_setup.ml_singlegame_setup import *
 
+
+"""
+    Helper functions
+"""
+def refresh_data(season: int):
+
+    team_df = get_teamnm()
+    team_name_list = team_df["Tm Abbrv"].unique().tolist()
+
+    today = datetime.now().strftime("%Y-%m-%d")
+
+    # pull data from football reference
+    save_team_stats(season, team_name_list, today)
+
+    # run game_results()
+    game_results(season, True)
+
+    # run season_data()
+    season_data(season)
+
+    return
+
+
 def run_model(
     season: int,
     today: datetime,
@@ -33,7 +56,7 @@ def run_model(
         sg_win = model[3]
 
         # reformat df
-        if sg_win['Win Prob.'][0] > sg_win['Win Prob.'][1]:
+        if sg_win["Win Prob."][0] > sg_win["Win Prob."][1]:
             # Away Tm win
             tmp_df = pd.DataFrame(
                 data={
@@ -78,7 +101,12 @@ def run_model(
         if visualize:
             # donut chart for single game
             sim_donut_graph(
-                season=season, away_tm=away_tm, home_tm=home_tm, sim_results_df=sg_win, hm_tm_prim=True, aw_tm_prim=True
+                season=season,
+                away_tm=away_tm,
+                home_tm=home_tm,
+                sim_results_df=sg_win,
+                hm_tm_prim=True,
+                aw_tm_prim=True,
             )
 
         if nfl_df.empty:
@@ -89,38 +117,50 @@ def run_model(
         if nfl_model_stats.empty:
             nfl_model_stats = tmp_stats.copy()
         else:
-            nfl_model_stats = pd.concat([nfl_model_stats, tmp_stats]).reset_index(drop=True)
+            nfl_model_stats = pd.concat([nfl_model_stats, tmp_stats]).reset_index(
+                drop=True
+            )
 
     return [nfl_df, nfl_model_stats]
 
+#############################################
 
+"""
+    To refresh the data for any year run this
+"""
+refresh_data(2025)
+
+"""
+    Set up starting with Week 5 matchups of 2025
+"""
 # Week 5
 nfl_df = run_model(
     season=2025,
-    today=pd.to_datetime('2025-10-02').strftime("%Y-%m-%d"),
+    today=pd.to_datetime("2025-10-02").strftime("%Y-%m-%d"),
     num_seasons=10,
-    matchup=[["SFO", "LAR"],
-             ['MIN', 'CLE'],
-             ['LVR', 'IND'],
-             ['NYG', 'NOR'],
-             ['DAL', 'NYJ'],
-             ['DEN', 'PHI'],
-             ['MIA', 'CAR'],
-             ['HOU', 'BAL'],
-             ['TEN', 'ARI'],
-             ['TAM', 'SEA'],
-             ['DET', 'CIN'],
-             ['WAS', 'LAC'],
-             ['NWE', 'BUF'],
-             ['KAN', 'JAX']],
+    matchup=[
+        ["SFO", "LAR"],
+        ["MIN", "CLE"],
+        ["LVR", "IND"],
+        ["NYG", "NOR"],
+        ["DAL", "NYJ"],
+        ["DEN", "PHI"],
+        ["MIA", "CAR"],
+        ["HOU", "BAL"],
+        ["TEN", "ARI"],
+        ["TAM", "SEA"],
+        ["DET", "CIN"],
+        ["WAS", "LAC"],
+        ["NWE", "BUF"],
+        ["KAN", "JAX"],
+    ],
     visualize=False,
 )
 
 # Week 6
-## added Tm Off Eff and Tm Eff
 nfl_df = run_model(
     season=2025,
-    today=pd.to_datetime('2025-10-09').strftime("%Y-%m-%d"),
+    today=pd.to_datetime("2025-10-09").strftime("%Y-%m-%d"),
     num_seasons=10,
     matchup=[
         ["PHI", "NYG"],
@@ -133,7 +173,7 @@ nfl_df = run_model(
         ["SEA", "JAX"],
         ["LAR", "BAL"],
         ["TEN", "LVR"],
-        ['GNB', 'CIN'],
+        ["GNB", "CIN"],
         ["SFO", "TAM"],
         ["DET", "KAN"],
         ["BUF", "ATL"],
@@ -165,6 +205,3 @@ nfl_df = run_model(
     ],
     visualize=False,
 )
-
-
-
