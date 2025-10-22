@@ -1033,7 +1033,8 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     away_score = sim_results_df["Pred. Pts"][0]
     home_score = sim_results_df["Pred. Pts"][1]
     # recalculate pt spread with tm scores
-    pt_spread = abs(home_score - away_score)
+    ## using calculated pt diff (again)
+    ## pt_spread = abs(home_score - away_score)
 
     sim_results = [gm_winner, pt_spread, away_win_prob, home_win_prob]
     win_prob = [away_win_prob, home_win_prob]
@@ -1135,3 +1136,4 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.suptitle("Win Probability", x=0.5, y=0.92, fontsize=10)
 
     return plt.show()
+
