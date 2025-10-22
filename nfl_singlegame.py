@@ -205,3 +205,26 @@ nfl_df = run_model(
     ],
     visualize=False,
 )
+
+# Week 8
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-10-22").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ['MIN', 'LAC'],
+        ['MIA', 'ATL'],
+        ['NYJ', 'CIN'],
+        ['CLE', 'NWE'],
+        ['NYG', 'PHI'],
+        ['BUF', 'CAR'],
+        ['CHI', 'BAL'],
+        ['SFO', 'HOU'],
+        ['TAM', 'NOR'],
+        ['TEN', 'IND'],
+        ['DAL', 'DEN'],
+        ['GNB', 'PIT'],
+        ['WAS', 'KAN'],
+    ],
+    visualize=False,
+)
