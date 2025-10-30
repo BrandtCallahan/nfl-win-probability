@@ -245,7 +245,7 @@ nfl_df = run_model(
         ["CAR", "GNB"],
         ["ATL", "NWE"],
         ["SFO", "NYG"],
-        ["INd", "PIT"],
+        ["IND", "PIT"],
         ["DEN", "HOU"],
         ["JAX", "LVR"],
         ["NOR", "LAR"],
@@ -255,3 +255,4 @@ nfl_df = run_model(
     ],
     visualize=False,
 )
+
