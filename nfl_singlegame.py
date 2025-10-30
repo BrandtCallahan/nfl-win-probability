@@ -6,6 +6,8 @@ from single_game_setup.ml_singlegame_setup import *
 """
     Helper functions
 """
+
+
 def refresh_data(season: int):
 
     team_df = get_teamnm()
@@ -123,6 +125,7 @@ def run_model(
 
     return [nfl_df, nfl_model_stats]
 
+
 #############################################
 
 """
@@ -212,19 +215,43 @@ nfl_df = run_model(
     today=pd.to_datetime("2025-10-22").strftime("%Y-%m-%d"),
     num_seasons=10,
     matchup=[
-        ['MIN', 'LAC'],
-        ['MIA', 'ATL'],
-        ['NYJ', 'CIN'],
-        ['CLE', 'NWE'],
-        ['NYG', 'PHI'],
-        ['BUF', 'CAR'],
-        ['CHI', 'BAL'],
-        ['SFO', 'HOU'],
-        ['TAM', 'NOR'],
-        ['TEN', 'IND'],
-        ['DAL', 'DEN'],
-        ['GNB', 'PIT'],
-        ['WAS', 'KAN'],
+        ["MIN", "LAC"],
+        ["MIA", "ATL"],
+        ["NYJ", "CIN"],
+        ["CLE", "NWE"],
+        ["NYG", "PHI"],
+        ["BUF", "CAR"],
+        ["CHI", "BAL"],
+        ["SFO", "HOU"],
+        ["TAM", "NOR"],
+        ["TEN", "IND"],
+        ["DAL", "DEN"],
+        ["GNB", "PIT"],
+        ["WAS", "KAN"],
+    ],
+    visualize=False,
+)
+
+# Week 9
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-10-29").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["BAL", "MIA"],
+        ["LAC", "TEN"],
+        ["CHI", "CIN"],
+        ["MIN", "DET"],
+        ["CAR", "GNB"],
+        ["ATL", "NWE"],
+        ["SFO", "NYG"],
+        ["INd", "PIT"],
+        ["DEN", "HOU"],
+        ["JAX", "LVR"],
+        ["NOR", "LAR"],
+        ["KAN", "BUF"],
+        ["SEA", "WAS"],
+        ["ARI", "DAL"],
     ],
     visualize=False,
 )
