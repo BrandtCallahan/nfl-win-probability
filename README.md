@@ -24,35 +24,17 @@ run_model(<br>
 
 <img width="640" height="480" alt="nwe_v_ten_1019" src="https://github.com/user-attachments/assets/b1e489d8-492a-4f42-b33b-e9add51734e3" />
 
-ARI: Arizona Cardinals <br>
-ATL: Atlanta Falcons <br>
-BAL: Baltimore Ravens <br>
-BUF: Buffalo Bills <br>
-CAR: Carolina Panthers <br>
-CHI: Chicago Bears <br>
-CIN: Cincinnati Bengals <br>
-CLE: Cleveland Browns <br>
-DAL: Dallas Cowboys <br>
-DEN: Denver Broncos <br>
-DET: Detroit Lions <br>
-GNB: Green Bay Packers <br>
-HOU: Houston Texans <br>
-IND: Indianapolis Colts <br>
-JAX: Jacksonville Jaguars <br>
-KAN: Kansas City Chiefs <br>
-LAC: Los Angeles Chargers <br>
-LAD: Los Angeles Rams <br>
-LVR: Las Vegas Raiders <br>
-MIA: Miami Dolphins <br>
-MIN: Minnesota Vikings <br>
-NWE: New England Patriots <br>
-NOR: New Orleans Saints <br>
-NYG: New York Giants <br>
-NYJ: New York Jets <br>
-PHI: Philadelphia Eagles <br>
-PIT: Pittsburgh Steelers <br>
-SEA: Seattle Seahawks <br> 
-SFO: San Francisco 49ers <br>
-TAM: Tampa Bay Buccaneers <br>
-TEN: Tennessee Titans <br>
-WAS: Washington Commanders <br>
+
+| AFC East | AFC North | AFC South | AFC West |
+| :-------: | :------: | :-------: | :-------: |
+| BUF: Buffalo Bills | BAL: Baltimore Ravens | HOU: Houston Texans  | DEN: Denver Broncos  |
+| MIA: Miami Dolphins | CIN: Cincinnati Bengals   | IND: Indianapolis Colts  | KAN: Kansas City Chiefs |
+| NWE: New England Patriots  |  CLE: Cleveland Browns  | JAX: Jacksonville Jaguars  |  LAC: Los Angeles Chargers  |
+| NYJ: New York Jets  |  PIT: Pittsburgh Steelers  | TEN: Tennessee Titans  |  LVR: Las Vegas Raiders  |
+
+| NFC East | NFC North | NFC South | NFC West |
+| :-------: | :------: | :-------: | :-------: |
+|  DAL: Dallas Cowboys  |  CHI: Chicago Bears  |  ATL: Atlanta Falcons  | ARI: Arizona Cardinals  |
+|  NYG: New York Giants  |  DET: Detroit Lions  |  CAR: Carolina Panthers  | LAR: Los Angeles Rams  |
+|  PHI: Philadelphia Eagles  |  GNB: Green Bay Packers  |  NOR: New Orleans Saints  | SEA: Seattle Seahawks  |
+|  WAS: Washington Commanders  |  MIN: Minnesota Vikings  |  TAM: Tampa Bay Buccaneers  | SFO: San Francisco 49ers  |
