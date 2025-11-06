@@ -256,3 +256,26 @@ nfl_df = run_model(
     visualize=False,
 )
 
+# Week 10
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-11-05").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["LVR", "DEN"],
+        ["ATL", "IND"],
+        ["NYG", "CHI"],
+        ["BUF", "MIA"],
+        ["BAL", "MIN"],
+        ["CLE", "NYJ"],
+        ["NWE", "TAM"],
+        ["NOR", "CAR"],
+        ["JAX", "HOU"],
+        ["ARI", "SEA"],
+        ["LAR", "SFO"],
+        ["DET", "WAS"],
+        ["PIT", "LAC"],
+        ["PHI", "GNB"],
+    ],
+    visualize=False,
+)
