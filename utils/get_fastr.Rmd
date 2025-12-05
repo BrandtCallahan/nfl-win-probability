@@ -1,0 +1,62 @@
+```{r load libraries, include=FALSE}
+#Packages
+library(nflfastR)
+library(nflplotR)
+library(nflreadr)
+library(nflverse)
+library(gt)
+library(dplyr)
+library(RSQLite)
+library(tidyverse)
+library(tictoc)
+library(skimr)
+library(sqldf)
+library(gtExtras)
+library(ggplot2)
+library(ggdist)
+library(ggimage)
+library(plotly)
+library(flexdashboard)
+library(shiny)
+library(shinydashboard)
+library(extrafont)
+library(scales)
+library(readr)
+
+options(scipen=999)
+```
+
+```{r game results}
+past_schedules <-load_schedules(seasons = TRUE)
+ 
+# all NFL games (week by week)
+games <- past_schedules %>%
+  select(
+    game_id,
+    season,
+    gameday,
+    weekday,
+    away_team,
+    away_score,
+    home_team,
+    home_score,
+    total,
+    spread_line,
+    home_spread_odds,
+    away_spread_odds,
+    total_line,
+    home_moneyline,
+    away_moneyline,
+    div_game,
+  ) %>% 
+  mutate(
+    across(c(spread_line), ~ . * -1)
+  ) %>%
+  rename(
+    hm_spread = spread_line,
+    total_score = total,
+  )
+
+# write the data frame to a CSV file
+write_csv(games, "C:\\Users\\bcallahan\\personal-github\\nfl-win-probability\\csv_files\\nfl_game_results.csv")
+```

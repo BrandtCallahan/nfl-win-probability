@@ -55,6 +55,94 @@ def gamelog_setup(season, tm_name, gm_date):
     # add season column
     team_gamelog["Season"] = season
 
+    """
+        Building SOS and SOR metrics
+        - SOS: looking at your opponents records (sum wins for all opponents divide by total games)
+        - SOS_2: looking at your opponents opponents records (2*OR+OOR / 3)
+    """
+    # SOS (Opponent Win %) (at time of game)
+    opp_sos_df = pd.DataFrame()
+    for week in range(len(team_gamelog)):
+        opponent = team_gamelog["Opp"][week]
+        gm_day = team_gamelog["Date"][week]
+
+        # read in opponent data
+        log = pd.read_csv(
+            f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+        )
+        opp_log = log[log["Tm"] == opponent]
+
+        opp_log = opp_log[
+            (
+                ~(opp_log["Opp"].isin(["", "Opponent", "Opp"]))
+                & ~(opp_log["W/L"].isin(["", np.nan, pd.NA]))
+            )
+        ].reset_index(drop=True)
+
+        opp_log = opp_log[opp_log["Date"] < gm_day]
+
+        try:
+            # friendly win/loss
+            opp_log.loc[opp_log["W/L"].str.contains("W"), "W/L Flag"] = 1
+            opp_log["W/L Flag"] = opp_log["W/L Flag"].fillna(0)
+
+            opp_log["W/L"] = opp_log["W/L"].str[0]
+
+            # running sum W
+            opp_log["Opp W"] = opp_log.groupby(["Tm"])["W/L Flag"].cumsum()
+            opp_log["Opp W%"] = opp_log["Opp W"] / opp_log["G"].astype(int)
+
+            opp_log["Gm Date"] = gm_day
+
+            if opp_sos_df.empty:
+                opp_sos_df = opp_log.iloc[opp_log.index.max() :, :][
+                    ["Gm Date", "Tm", "Opp W%"]
+                ].rename(columns={"Tm": "Opp", "Gm Date": "Date"})
+            else:
+                opp_sos_df = pd.concat(
+                    [
+                        opp_sos_df,
+                        opp_log.iloc[opp_log.index.max() :, :][
+                            ["Gm Date", "Tm", "Opp W%"]
+                        ].rename(columns={"Tm": "Opp", "Gm Date": "Date"}),
+                    ]
+                ).reset_index(drop=True)
+        except ValueError:
+            pass
+
+    opp_sos_df["Tm"] = tm_name
+
+    opp_sos = pd.DataFrame()
+    for i in range(len(opp_sos_df)):
+        opp_df = (
+            opp_sos_df.iloc[: i + 1]
+            .groupby(["Tm"])
+            .agg(
+                last_gm_date=("Date", "last"),
+                opp_sos=("Opp W%", "mean"),
+                Opp=("Opp", "last"),
+            )
+            .reset_index()
+        )
+
+        if opp_sos.empty:
+            opp_sos = opp_df[["Tm", "last_gm_date", "Opp", "opp_sos"]].rename(
+                columns={"last_gm_date": "Date", "opp_sos": "Opp SOS"}
+            )
+        else:
+            opp_sos = pd.concat(
+                [
+                    opp_sos,
+                    opp_df[["Tm", "last_gm_date", "Opp", "opp_sos"]].rename(
+                        columns={"last_gm_date": "Date", "opp_sos": "Opp SOS"}
+                    ),
+                ]
+            ).reset_index(drop=True)
+
+    # merge in Opp SOS
+    team_gamelog = team_gamelog.merge(opp_sos, how="left", on=["Tm", "Date", "Opp"])
+    team_gamelog["Opp SOS"] = team_gamelog["Opp SOS"].fillna(0.5)
+
     # 3rd Down Conversion
     team_gamelog["3Dwn Conv %"] = (
         team_gamelog["3rd Dwn Conv"] / team_gamelog["3rd Dwn Att"]
@@ -66,6 +154,9 @@ def gamelog_setup(season, tm_name, gm_date):
     # FG%
     team_gamelog["FG%"] = team_gamelog["FGM"] / team_gamelog["FGA"]
     team_gamelog["Opp FG%"] = team_gamelog["Opp FGM"] / team_gamelog["Opp FGA"]
+
+    # TO +/-
+    team_gamelog["TO +/-"] = team_gamelog["Opp Tot TO"] - team_gamelog["Tot TO"]
 
     # friendly win/loss
     team_gamelog.loc[team_gamelog["W/L"].str.contains("W"), "W/L Flag"] = 1
@@ -94,9 +185,7 @@ def gamelog_setup(season, tm_name, gm_date):
     team_gamelog.loc[team_gamelog["W/L"] == "L", "Streak +/-"] = (
         team_gamelog["Running Streak"] * -1
     )
-    team_gamelog.loc[team_gamelog["W/L"] == "T", "Streak +/-"] = (
-        0
-    )
+    team_gamelog.loc[team_gamelog["W/L"] == "T", "Streak +/-"] = 0
     team_gamelog["Streak +/-"] = team_gamelog["Streak +/-"].astype(int)
     team_gamelog = team_gamelog.drop(
         columns=["Streak Value", "Start Streak", "Streak Id", "Running Streak"]
@@ -203,6 +292,9 @@ def rolling_gamedata(season, hm_tm, aw_tm, gm_date):
             OppPts=("Opp Pts", "median"),
             TmDiv=("Tm Div", "first"),
             WStreak=("Streak +/-", "last"),
+            AvgMoV=("Margin Victory", "median"),
+            TotPtDiff=("Margin Victory", "sum"),
+            OppSOS=("Opp SOS", "last"),
             # start boxscore stats
             PassCmppct=("Pass Cmp %", "median"),
             PassAdjYdsAtt=("Pass Adj Y/A", "median"),
@@ -212,6 +304,7 @@ def rolling_gamedata(season, hm_tm, aw_tm, gm_date):
             FGpct=("FG%", "median"),
             PenYdsG=("Pen Yds", "median"),
             TOVG=("Tot TO", "median"),
+            TO=("TO +/-", "sum"),
             Dwn3Conv=("3Dwn Conv %", "median"),
             # opponent boxscore stats
             OppPassCmppct=("Opp Pass Cmp %", "median"),
@@ -282,6 +375,10 @@ def season_data(season):
                             "Away Lg Rank",
                             "Home W",
                             "Home Pt Diff",
+                            "Home Spread",
+                            "Home Spread W",
+                            "Home Moneyline",
+                            "Away Moneyline",
                             # "Neutral Game",
                             "Divisional Game",
                             "Playoff Game",
@@ -323,7 +420,6 @@ def single_game_model(data_seasons, today, matchup):
             f"~/personal-github/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
-        tmp_df.shape
         # concat all years of data into one df
         if matchup_df.empty:
             matchup_df = tmp_df.copy()
@@ -349,15 +445,7 @@ def single_game_model(data_seasons, today, matchup):
     # join back to matchup_df
     matchup_df = pd.concat([matchup_df, hm_conf_dummy_df, aw_conf_dummy_df], axis=1)
 
-    # build point margin variables (+7, +3, -3, -7)
-    matchup_df["Hm +7"] = matchup_df["Home Pt Diff"] > 7
-    matchup_df["Hm +3"] = matchup_df["Home Pt Diff"] > 3
-    matchup_df["Hm -3"] = matchup_df["Home Pt Diff"] < 3
-    matchup_df["Hm -7"] = matchup_df["Home Pt Diff"] < 7
-
-    tf_dict = {True: 1, False: 0}
-    for col in ["Hm +7", "Hm +3", "Hm -3", "Hm -7"]:
-        matchup_df[f"{col}"] = matchup_df[f"{col}"].map(tf_dict)
+    # tf_dict = {True: 1, False: 0}
 
     # data for the matchup
     hm_tm = matchup.split(" vs. ")[1]
@@ -438,6 +526,16 @@ def single_game_model(data_seasons, today, matchup):
         else:
             matchup_data[f"{col}"] = 0
 
+    # ensure FG % is not null
+    for col in ['Aw_FGpct', 'Aw_OppFGpct', 'Hm_FGpct', 'Hm_OppFGpct']:
+        matchup_df[f'{col}'] = matchup_df[f'{col}'].fillna(0)
+        matchup_data[f'{col}'] = matchup_data[f'{col}'].fillna(0)
+
+    # favorite/underdog boolean instead of moneyline odds
+    ## will show Home Favorite based on the spread (negative designates favorite)
+    matchup_df['Hm_Favorite'] = matchup_df['Home Spread'] <= 0
+    matchup_data["Hm_Favorite"] = matchup_data["Home Spread"] <= 0
+
     """
         Build Out Model
     """
@@ -454,6 +552,11 @@ def single_game_model(data_seasons, today, matchup):
                 "Hm_TmDiv",
                 "Home W",
                 "Home Pt Diff",
+                "Home Spread",
+                "Home Spread W",
+                "Away Moneyline",
+                "Home Moneyline",
+                'Hm_Favorite',
                 "Divisional Game",
                 "Away Team",
                 "Away Elo",
@@ -464,6 +567,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Aw_W",
                 "Aw_Wpct",
                 "Aw_WStreak",
+                "Aw_OppSOS",
+                "Aw_TotPtDiff",
+                "Aw_AvgMoV",
                 "Aw_Poss",
                 "Aw_OppPoss",
                 "Aw_PassOffEff",
@@ -510,6 +616,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Hm_W",
                 "Hm_Wpct",
                 "Hm_WStreak",
+                "Hm_OppSOS",
+                "Hm_TotPtDiff",
+                "Hm_AvgMoV",
                 "Hm_Poss",
                 "Hm_OppPoss",
                 "Hm_PassOffEff",
@@ -575,10 +684,18 @@ def single_game_model(data_seasons, today, matchup):
             "Matchup",
             "Game Date",
             "Home Pt Diff",
+            "Home Spread",
+            "Home Spread W",
+            # "Away Moneyline",
+            # "Home Moneyline",
+            'Hm_Favorite',
             "Aw_TmOffEff",
             "Aw_TmEff",
             "Aw_W",
             "Aw_WStreak",
+            "Aw_OppSOS",
+            "Aw_TotPtDiff",
+            "Aw_AvgMoV",
             "Aw_PassOffEff",
             "Aw_Pts",
             "Aw_PassCmppct",
@@ -592,6 +709,9 @@ def single_game_model(data_seasons, today, matchup):
             "Hm_TmEff",
             "Hm_W",
             "Hm_WStreak",
+            "Hm_OppSOS",
+            "Hm_TotPtDiff",
+            "Hm_AvgMoV",
             "Hm_Poss",
             "Hm_RushOffEff",
             "Hm_TmLuckW",
@@ -616,8 +736,8 @@ def single_game_model(data_seasons, today, matchup):
         {
             "Aw_WStreak": "float64",
             "Hm_WStreak": "float64",
-            'Home Pt Diff': "float64",
-            'Home W': 'float64',
+            "Home Pt Diff": "float64",
+            "Home W": "float64",
         }
     )
 
@@ -629,9 +749,9 @@ def single_game_model(data_seasons, today, matchup):
     final_model_stats = pd.DataFrame()
     for target_variable in [
         "Home W",
+        "Home Spread W",
         "Home Pt Diff",
         "Hm_Pts",
-        "Aw_Pts",
     ]:
         logger.info(f"data transformed: setting target variable - {target_variable}")
         # target variable
@@ -643,7 +763,7 @@ def single_game_model(data_seasons, today, matchup):
         ]
         model_y = y.drop(columns=["Matchup"])
 
-        if target_variable in ["Home W", "Home Pt Diff"]:
+        if target_variable in ["Home W", "Home Pt Diff", "Home Spread W"]:
             X = model_df.drop(
                 columns=[
                     "Home W",
@@ -651,6 +771,7 @@ def single_game_model(data_seasons, today, matchup):
                     "Away Team",
                     "Game Date",
                     "Home Pt Diff",
+                    "Home Spread W",
                     f"{target_variable}",
                 ]
             )
@@ -663,24 +784,13 @@ def single_game_model(data_seasons, today, matchup):
                     "Away Team",
                     "Game Date",
                     "Home Pt Diff",
+                    "Home Spread W",
                     "Hm_Pts",
                     "Aw_Pts",
                     f"{target_variable}",
                 ]
             )
             model_X = X.drop(columns=["Matchup"])
-
-        """
-            FINDING best features
-            features = model_X.columns.tolist()
-            f_statistic, p_values = f_classif(model_X, model_y)
-
-            feat_df = pd.DataFrame(data={
-                'features': features,
-                'f_stat': f_statistic,
-                'p_values': p_values,
-            })
-        """
 
         """
             Run Model
@@ -692,12 +802,12 @@ def single_game_model(data_seasons, today, matchup):
         X_train, X_test, y_train, y_test = train_test_split(
             model_X.iloc[1:],
             model_y.iloc[1:],
-            test_size=0.2,
+            test_size=0.3,
             random_state=14,
         )
 
         # call model with parameters
-        if target_variable in ["Home W"]:
+        if target_variable in ["Home W", "Home Spread W"]:
             model = KNeighborsClassifier(
                 n_neighbors=100,
                 weights="distance",
@@ -714,12 +824,29 @@ def single_game_model(data_seasons, today, matchup):
             )
             model.fit(X_train, np.ravel(y_train))
 
+        """
+                FINDING best features
+        """
+        features = model_X.columns.tolist()
+        f_statistic, p_values = f_classif(model_X, model_y)
+
+        feat_df = pd.DataFrame(data={
+            'features': features,
+            'f_stat': f_statistic,
+            'p_values': p_values,
+        }).sort_values(by=['p_values'], ascending=True)
+
+        feature_list = feat_df[feat_df['p_values'] <= 0.01].features.tolist()
+
+        # re-run model with "important" features
+        model.fit(X_train[feature_list], np.ravel(y_train))
+
         # suppress scientific notation
         # logger.info(f"predicting test set")
         np.set_printoptions(suppress=True)
-        predictions = model.predict(X_test)
-        if target_variable in ["Home W"]:
-            predict_prob = model.predict_proba(X_test)
+        predictions = model.predict(X_test[feature_list])
+        if target_variable in ["Home W", "Home Spread W"]:
+            predict_prob = model.predict_proba(X_test[feature_list])
 
         # roll through prediction probabilities and give me the probability of attending the game
         #   i.e. the second number of the array for each index
@@ -729,7 +856,7 @@ def single_game_model(data_seasons, today, matchup):
             tmp_pred = predictions[i]
             w_pred += [tmp_pred]
 
-            if target_variable in ["Home W"]:
+            if target_variable in ["Home W", "Home Spread W"]:
                 tmp_prob = predict_prob[i]
                 w_prob += [tmp_prob[1]]
 
@@ -741,6 +868,7 @@ def single_game_model(data_seasons, today, matchup):
                 "Home Team",
                 "Away Team",
                 "Home W",
+                "Home Spread W",
                 "Predict",
                 "Predict Probability",
             ]
@@ -757,13 +885,14 @@ def single_game_model(data_seasons, today, matchup):
         tmp_df["Home Team"] = model_df.iloc[mylist]["Home Team"]
         tmp_df["Away Team"] = model_df.iloc[mylist]["Away Team"]
         tmp_df["Home W"] = model_df.iloc[mylist]["Home W"]
+        tmp_df["Home Spread W"] = model_df.iloc[mylist]["Home Spread W"]
 
         tmp_df["Predict"] = w_pred
-        if target_variable in ["Home W"]:
+        if target_variable in ["Home W", "Home Spread W"]:
             tmp_df["Predict Probability"] = w_prob
 
         # model statistics
-        if target_variable in ["Home W"]:
+        if target_variable in ["Home W", "Home Spread W"]:
             model_stats_df = pd.DataFrame(
                 columns=[
                     "Target Variable",
@@ -776,7 +905,7 @@ def single_game_model(data_seasons, today, matchup):
                 ]
             )
             model_stats_df["Target Variable"] = [target_variable]
-            model_stats_df["R^2"] = [model.score(X_test, y_test)]
+            model_stats_df["R^2"] = [model.score(X_test[feature_list], y_test)]
             model_stats_df["RMSE"] = [np.sqrt(mean_squared_error(y_test, predictions))]
             model_stats_df["Recall Score"] = [
                 recall_score(y_test, predictions)
@@ -794,7 +923,7 @@ def single_game_model(data_seasons, today, matchup):
                 ]
             )
             model_stats_df["Target Variable"] = [target_variable]
-            model_stats_df["R^2"] = [model.score(X_test, y_test)]
+            model_stats_df["R^2"] = [model.score(X_test[feature_list], y_test)]
             model_stats_df["RMSE"] = [np.sqrt(mean_squared_error(y_test, predictions))]
 
         """
@@ -811,89 +940,9 @@ def single_game_model(data_seasons, today, matchup):
         """
         logger.info(f"predicting {target_variable}: {matchup_data["Matchup"][0]}")
 
-        if target_variable in ["Home W", "Home Pt Diff"]:
-            prediction_df = matchup_data[
-                [
-                    "Aw_TmOffEff",
-                    "Aw_TmEff",
-                    "Aw_W",
-                    "Aw_WStreak",
-                    "Aw_PassOffEff",
-                    "Aw_Pts",
-                    "Aw_PassCmppct",
-                    "Aw_PassAdjYdsAtt",
-                    "Aw_PassTDG",
-                    "Aw_Dwn3Conv",
-                    "Aw_OppTOVG",
-                    "Aw_OppDwn3Conv",
-                    "Aw_TmLuck",
-                    "Hm_TmOffEff",
-                    "Hm_TmEff",
-                    "Hm_W",
-                    "Hm_WStreak",
-                    "Hm_Poss",
-                    "Hm_RushOffEff",
-                    "Hm_TmLuckW",
-                    "Hm_Pts",
-                    "Hm_OppPts",
-                    "Hm_PassCmppct",
-                    "Hm_PassAdjYdsAtt",
-                    "Hm_RushYdsAtt",
-                    "Hm_RushTDG",
-                    "Hm_Dwn3Conv",
-                    "Hm_OppPassAdjYdsAtt",
-                    "Hm_OppTOVG",
-                    "Hm_OppDwn3Conv",
-                    "Hm_TmLuck",
-                    "Elo_diff",
-                    "Home Elo",
-                    "Away Elo",
-                    "Home Lg Rank",
-                    "Away Lg Rank",
-                ]
-            ]
-        else:
-            prediction_df = matchup_data[
-                [
-                    "Aw_TmOffEff",
-                    "Aw_TmEff",
-                    "Aw_W",
-                    "Aw_WStreak",
-                    "Aw_PassOffEff",
-                    "Aw_PassCmppct",
-                    "Aw_PassAdjYdsAtt",
-                    "Aw_PassTDG",
-                    "Aw_Dwn3Conv",
-                    "Aw_OppTOVG",
-                    "Aw_OppDwn3Conv",
-                    "Aw_TmLuck",
-                    "Hm_TmOffEff",
-                    "Hm_TmEff",
-                    "Hm_W",
-                    "Hm_WStreak",
-                    "Hm_Poss",
-                    "Hm_RushOffEff",
-                    "Hm_TmLuckW",
-                    "Hm_OppPts",
-                    "Hm_PassCmppct",
-                    "Hm_PassAdjYdsAtt",
-                    "Hm_RushYdsAtt",
-                    "Hm_RushTDG",
-                    "Hm_Dwn3Conv",
-                    "Hm_OppPassAdjYdsAtt",
-                    "Hm_OppTOVG",
-                    "Hm_OppDwn3Conv",
-                    "Hm_TmLuck",
-                    "Elo_diff",
-                    "Home Elo",
-                    "Away Elo",
-                    "Home Lg Rank",
-                    "Away Lg Rank",
-                ]
-            ]
-        # prediction_df = prediction_df[limit_X_train.feature.tolist()]
+        prediction_df = matchup_data[feature_list]
 
-        if target_variable in ["Home W"]:
+        if target_variable in ["Home W", "Home Spread W"]:
 
             prediction_prob = model.predict_proba(prediction_df)
         prediction = model.predict(prediction_df)
@@ -906,9 +955,13 @@ def single_game_model(data_seasons, today, matchup):
             tmp_pred = prediction[i]
             w_pred += [tmp_pred]
 
-            if target_variable in ["Home W"]:
+            if target_variable in ["Home W", "Home Spread W"]:
                 tmp_prob = prediction_prob[i]
                 w_prob += [tmp_prob[1]]
+
+        """
+            TODO: Need to see how the new 'Home Spread W' effects all this!!
+        """
 
         # view results in df
         pred_df = pd.DataFrame(
@@ -935,7 +988,7 @@ def single_game_model(data_seasons, today, matchup):
 
         pred_df[f"Predict"] = w_pred
 
-        if target_variable in ["Home W"]:
+        if target_variable in ["Home W", 'Home Spread W']:
             pred_df[f"Predict Probability"] = w_prob
 
             # round the probability variable
@@ -948,7 +1001,7 @@ def single_game_model(data_seasons, today, matchup):
                     "Predict Probability": f"{target_variable} Probability",
                 }
             )
-        elif target_variable in ["Home W"]:
+        elif target_variable in ["Home W", 'Home Spread W']:
             final_pred_df = final_pred_df.merge(
                 pred_df[["Matchup", "Predict", "Predict Probability"]],
                 how="inner",
@@ -969,17 +1022,28 @@ def single_game_model(data_seasons, today, matchup):
             drop=True
         )
 
-    # ensure no tie (home team +1)
-    if (
-        round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
-    ) & (final_pred_df["Home W Probability"][0] > 0.5):
-        hm_points = round(final_pred_df["Hm_Pts"][0], 1) + 1
-    elif (
-        round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
-    ) & (final_pred_df["Home W Probability"][0] < 0.5):
-        hm_points = round(final_pred_df["Hm_Pts"][0], 1) - 1
+    # # ensure no tie (home team +1)
+    # if (
+    #     round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
+    # ) & (final_pred_df["Home W Probability"][0] > 0.5):
+    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1) + 1
+    # elif (
+    #     round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
+    # ) & (final_pred_df["Home W Probability"][0] < 0.5):
+    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1) - 1
+    # else:
+    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1)
+
+    # ensure Pt Diff reflects Hm value properly
+    if final_pred_df["Home W"][0] == 0:
+        if final_pred_df["Home Pt Diff"][0] > 0:
+            final_pred_df["Home Pt Diff"][0] = final_pred_df["Home Pt Diff"][0] * -1
     else:
-        hm_points = round(final_pred_df["Hm_Pts"][0], 1)
+        if final_pred_df["Home Pt Diff"][0] < 0:
+            final_pred_df["Home Pt Diff"][0] = final_pred_df["Home Pt Diff"][0] * -1
+
+    hm_points = final_pred_df["Hm_Pts"][0]
+    aw_points = final_pred_df["Hm_Pts"][0] - final_pred_df["Home Pt Diff"][0]
 
     # format a df to fit the donut chart
     sg_win = pd.DataFrame(
@@ -997,8 +1061,12 @@ def single_game_model(data_seasons, today, matchup):
                 final_pred_df["Home Pt Diff"][0],
             ],
             "Pred. Pts": [
-                round(final_pred_df["Aw_Pts"][0], 1),
-                hm_points,
+                round(aw_points, 1),
+                round(hm_points, 1),
+            ],
+            "Spread W": [
+                1 - final_pred_df["Home Spread W Probability"][0],
+                final_pred_df["Home Spread W Probability"][0],
             ],
         }
     )
@@ -1136,4 +1204,3 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.suptitle("Win Probability", x=0.5, y=0.92, fontsize=10)
 
     return plt.show()
-

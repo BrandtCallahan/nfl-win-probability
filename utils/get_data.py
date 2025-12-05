@@ -2,9 +2,7 @@ import cmath
 from datetime import datetime
 import os
 
-os.chdir(
-    f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability"
-)
+os.chdir(f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability")
 
 """
 Python Predictive Model imports
@@ -25,7 +23,7 @@ from utils.webscrape_utils import (
 from utils.team_dict import get_teamnm
 
 """
-Team stats by game
+    Team Stats by Game
 """
 
 
@@ -542,7 +540,7 @@ def tm_lg_ranking(season_year, today):
             )
         )
         tmp_df["Lg Rnk"] = tmp_df["W% 2"].rank(method="min", ascending=False)
-        tmp_df = tmp_df.drop(columns=['W% 2'])
+        tmp_df = tmp_df.drop(columns=["W% 2"])
 
         # accomodate for bye week
         if team_rnk.empty:
@@ -557,7 +555,9 @@ def tm_lg_ranking(season_year, today):
             team_rnk = pd.concat(
                 [
                     team_rnk,
-                    pd.DataFrame(data={"Tm": ["TAM", "MIA"], "Tm W 2": [0, 0], "Lg Rnk": [1, 1]}),
+                    pd.DataFrame(
+                        data={"Tm": ["TAM", "MIA"], "Tm W 2": [0, 0], "Lg Rnk": [1, 1]}
+                    ),
                 ]
             )
 
@@ -566,7 +566,7 @@ def tm_lg_ranking(season_year, today):
         tmp_gamelog = tmp_gamelog.merge(team_rnk, how="left", on=["Tm"])
         tmp_gamelog["Tm W"] = tmp_gamelog["Tm W"].fillna(tmp_gamelog["Tm W 2"])
         tmp_gamelog = tmp_gamelog.drop(columns=["Tm W 2"])
-        tmp_gamelog['Tm Rnk'] = tmp_gamelog["Tm Rnk"].fillna(tmp_gamelog["Lg Rnk"])
+        tmp_gamelog["Tm Rnk"] = tmp_gamelog["Tm Rnk"].fillna(tmp_gamelog["Lg Rnk"])
         tmp_gamelog = tmp_gamelog.drop(columns=["Lg Rnk"])
 
         # put the new opponent elo in for the next week
@@ -577,7 +577,7 @@ def tm_lg_ranking(season_year, today):
         )
         tmp_gamelog["Opp W"] = tmp_gamelog["Opp W"].fillna(tmp_gamelog["Tm W 2"])
         tmp_gamelog = tmp_gamelog.drop(columns=["Tm W 2"])
-        tmp_gamelog['Opp Rnk'] = tmp_gamelog["Opp Rnk"].fillna(tmp_gamelog["Lg Rnk"])
+        tmp_gamelog["Opp Rnk"] = tmp_gamelog["Opp Rnk"].fillna(tmp_gamelog["Lg Rnk"])
         tmp_gamelog = tmp_gamelog.drop(columns=["Lg Rnk"])
 
         team_gamelog = (
@@ -595,6 +595,71 @@ def tm_lg_ranking(season_year, today):
     rnk_df = team_gamelog[["Week", "Date", "Tm", "Tm Rnk", "Opp", "Opp Rnk"]]
 
     return rnk_df
+
+
+def nfl_odds(season_year):
+    csv_df = pd.read_csv(
+        f"~/personal-github/nfl-win-probability/csv_files/nfl_game_results.csv",
+    )
+    csv_df = csv_df.astype(
+        {
+            "gameday": "datetime64[ns]",
+        }
+    )
+
+    # map team abbreviations
+    fastr_dict = {
+        "ARI": "ARI",
+        "ATL": "ATL",
+        "BAL": "BAL",
+        "BUF": "BUF",
+        "CAR": "CAR",
+        "CHI": "CHI",
+        "CIN": "CIN",
+        "CLE": "CLE",
+        "DAL": "DAL",
+        "DEN": "DEN",
+        "DET": "DET",
+        "GB": "GNB",
+        "HOU": "HOU",
+        "IND": "IND",
+        "JAX": "JAX",
+        "KC": "KAN",
+        "LA": "LAR",
+        "LAC": "LAC",
+        "LV": "LVR",
+        "MIA": "MIA",
+        "MIN": "MIN",
+        "NE": "NWE",
+        "NO": "NOR",
+        "NYG": "NYG",
+        "NYJ": "NYJ",
+        "OAK": "LVR",
+        "PHI": "PHI",
+        "PIT": "PIT",
+        "SD": "LAC",
+        "SEA": "SEA",
+        "SF": "SFO",
+        "STL": "LAR",
+        "TB": "TAM",
+        "TEN": "TEN",
+        "WAS": "WAS",
+    }
+
+    csv_df["away_team"] = csv_df["away_team"].map(fastr_dict)
+    csv_df["home_team"] = csv_df["home_team"].map(fastr_dict)
+
+    csv_df.loc[:, "matchup"] = (
+        csv_df.loc[:, "away_team"] + " vs. " + csv_df.loc[:, "home_team"]
+    )
+
+    # limit to 2013 (for now)
+    nfl_df = csv_df[
+        (csv_df["season"].astype("int16") == season_year)
+        # & (csv_df["gameday"] <= pd.to_datetime(today))
+    ]
+
+    return nfl_df
 
 
 # TODO: edit game_results() for neutral games with ratings (tm_elo_rating())
@@ -620,11 +685,18 @@ def game_results(season, save=False):
             "Away Pts",
             "Home W",
             "Home Pt Diff",
+            "Home Spread",
+            "Home Spread W",
+            "Home Moneyline",
+            "Away Moneyline",
         ]
     )
 
     # all teams
     team_df = get_teamnm()
+
+    # read in nfl_odds()
+    nfl_odds_df = nfl_odds(season).reset_index(drop=True)
 
     # run through each team to get the results and compile to df
     for n, tm_url in enumerate(team_df["Gamelog Name"].unique().tolist()):
@@ -724,6 +796,37 @@ def game_results(season, save=False):
 
                     home_team = matchup.split(" vs. ", 1)[1]
 
+                    # Home Spread
+                    hm_spread = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "hm_spread"
+                    ].reset_index(drop=True)[0]
+
+                    # Moneylines
+                    hm_ml = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "home_moneyline"
+                    ].reset_index(drop=True)[0]
+                    aw_ml = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "away_moneyline"
+                    ].reset_index(drop=True)[0]
+
+                    # Home Spread W
+                    if hm_spread <= 0:
+                        if hm_tm_w == 1:
+                            if hm_pt_diff > abs(hm_spread):
+                                hm_spread_w = 1
+                            else:
+                                hm_spread_w = 0
+                        else:
+                            hm_spread_w = 0
+                    else:
+                        if hm_tm_w == 1:
+                            hm_spread_w = 1
+                        else:
+                            if abs(hm_pt_diff) < abs(hm_spread):
+                                hm_spread_w = 1
+                            else:
+                                hm_spread_w = 0
+
                     tmp_df = pd.DataFrame(
                         data={
                             "Game Date": [tmp_game["Date"]],
@@ -742,6 +845,10 @@ def game_results(season, save=False):
                             "Away Pts": [tmp_game["Tm Pts"]],
                             "Home W": [hm_tm_w],
                             "Home Pt Diff": [hm_pt_diff],
+                            "Home Spread": [hm_spread],
+                            "Home Spread W": [hm_spread_w],
+                            "Home Moneyline": [hm_ml],
+                            "Away Moneyline": [aw_ml],
                         }
                     )
 
@@ -800,6 +907,37 @@ def game_results(season, save=False):
 
                     away_team = matchup.split(" vs. ", 1)[0]
 
+                    # Home Spread
+                    hm_spread = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "hm_spread"
+                    ].reset_index(drop=True)[0]
+
+                    # Moneylines
+                    hm_ml = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "home_moneyline"
+                    ].reset_index(drop=True)[0]
+                    aw_ml = nfl_odds_df.loc[
+                        nfl_odds_df["matchup"] == matchup, "away_moneyline"
+                    ].reset_index(drop=True)[0]
+
+                    # Home Spread W
+                    if hm_spread <= 0:
+                        if hm_tm_w == 1:
+                            if hm_pt_diff > abs(hm_spread):
+                                hm_spread_w = 1
+                            else:
+                                hm_spread_w = 0
+                        else:
+                            hm_spread_w = 0
+                    else:
+                        if hm_tm_w == 1:
+                            hm_spread_w = 1
+                        else:
+                            if abs(hm_pt_diff) < abs(hm_spread):
+                                hm_spread_w = 1
+                            else:
+                                hm_spread_w = 0
+
                     tmp_df = pd.DataFrame(
                         data={
                             "Game Date": [tmp_game["Date"]],
@@ -818,6 +956,10 @@ def game_results(season, save=False):
                             "Away Pts": [tmp_game["Opp Pts"]],
                             "Home W": [hm_tm_w],
                             "Home Pt Diff": [hm_pt_diff],
+                            "Home Spread": [hm_spread],
+                            "Home Spread W": [hm_spread_w],
+                            "Home Moneyline": [hm_ml],
+                            "Away Moneyline": [aw_ml],
                         }
                     )
 
@@ -831,7 +973,7 @@ def game_results(season, save=False):
                 pass
             except ValueError:
                 pass
-            
+
     season_gm_results = season_gm_results.drop_duplicates()
 
     if save:

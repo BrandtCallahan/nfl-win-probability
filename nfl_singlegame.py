@@ -71,6 +71,12 @@ def run_model(
                     "Win Prob.": [sg_win["Win Prob."][0]],
                 }
             )
+            if sg_win["Spread W"][0] > sg_win["Spread W"][1]:
+                tmp_df["Pred. Spread W"] = f"{away_tm}"
+                tmp_df["Spread W Prob."] = f"{round(sg_win['Spread W'][0], 3)}"
+            else:
+                tmp_df["Pred. Spread W"] = f"{home_tm}"
+                tmp_df["Spread W Prob."] = f"{round(sg_win['Spread W'][1], 3)}"
         else:
             # Home Tm win
             tmp_df = pd.DataFrame(
@@ -84,6 +90,12 @@ def run_model(
                     "Win Prob.": [sg_win["Win Prob."][1]],
                 }
             )
+            if sg_win["Spread W"][0] > sg_win["Spread W"][1]:
+                tmp_df["Pred. Spread W"] = f"{away_tm}"
+                tmp_df["Spread W Prob."] = f"{round(sg_win['Spread W'][0], 3)}"
+            else:
+                tmp_df["Pred. Spread W"] = f"{home_tm}"
+                tmp_df["Spread W Prob."] = f"{round(sg_win['Spread W'][1], 3)}"
 
         model_stats = model[1]
 
@@ -92,11 +104,10 @@ def run_model(
             data={
                 "Matchup": [f"{away_tm} vs. {home_tm}"],
                 "W Exp. Accuracy": [round(model_stats["F1 Score"][0], 3)],
-                "Pt Diff Accuracy": [round(model_stats["R^2"][1], 3)],
-                "Away Pts Accuracy": [round(model_stats["R^2"][3], 3)],
-                "Away Pts +/-": [round(model_stats["RMSE"][3], 2)],
-                "Home Pts Accuracy": [round(model_stats["R^2"][2], 3)],
-                "Home Pts +/-": [round(model_stats["RMSE"][2], 2)],
+                "Spread Exp. Accuracy": [round(model_stats["F1 Score"][1], 3)],
+                "Pt Diff Accuracy": [round(model_stats["R^2"][2], 3)],
+                "Home Pts Accuracy": [round(model_stats["R^2"][3], 3)],
+                "Home Pts +/-": [round(model_stats["RMSE"][3], 2)],
             }
         )
 
@@ -108,7 +119,7 @@ def run_model(
                 home_tm=home_tm,
                 sim_results_df=sg_win,
                 hm_tm_prim=True,
-                aw_tm_prim=True,
+                aw_tm_prim=False,
             )
 
         if nfl_df.empty:
@@ -276,6 +287,105 @@ nfl_df = run_model(
         ["DET", "WAS"],
         ["PIT", "LAC"],
         ["PHI", "GNB"],
+    ],
+    visualize=False,
+)
+
+# Week 11
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-11-12").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["NYJ", "NWE"],
+        ["WAS", "MIA"],
+        ["HOU", "TEN"],
+        ["CAR", "ATL"],
+        ["TAM", "BUF"],
+        ["CHI", "MIN"],
+        ["GNB", "NYG"],
+        ["CIN", "PIT"],
+        ["LAC", "JAX"],
+        ["SEA", "LAR"],
+        ["SFO", "ARI"],
+        ["BAL", "CLE"],
+        ["KAN", "DEN"],
+        ["DET", "PHI"],
+        ["DAL", "LVR"],
+    ],
+    visualize=False,
+)
+
+# Week 12
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-11-19").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["BUF", "HOU"],
+        ["SEA", "TEN"],
+        ["IND", "KAN"],
+        ["PIT", "CHI"],
+        ["NWE", "CIN"],
+        ["NYJ", "BAL"],
+        ["MIN", "GNB"],
+        ["NYG", "DET"],
+        ["JAX", "ARI"],
+        ["CLE", "LVR"],
+        ["ATL", "NOR"],
+        ["PHI", "DAL"],
+        ["TAM", "LAR"],
+        ["CAR", "SFO"],
+    ],
+    visualize=False,
+)
+
+# Week 13
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-11-26").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["GNB", "DET"],
+        ["KAN", "DAL"],
+        ["CIN", "BAL"],
+        ["CHI", "PHI"],
+        ["JAX", "TEN"],
+        ["SFO", "CLE"],
+        ["HOU", "IND"],
+        ["NOR", "MIA"],
+        ["ATL", "NYJ"],
+        ["LAR", "CIN"],
+        ["ARI", "TAM"],
+        ["MIN", "SEA"],
+        ["LVR", "LAC"],
+        ["BUF", "PIT"],
+        ["DEN", "WAS"],
+        ["NYG", "NWE"],
+    ],
+    visualize=False,
+)
+
+# Week 14
+nfl_df = run_model(
+    season=2025,
+    today=pd.to_datetime("2025-12-04").strftime("%Y-%m-%d"),
+    num_seasons=10,
+    matchup=[
+        ["DAL", "DET"],
+        ["TEN", "CLE"],
+        ["MIA", "NYJ"],
+        ["PIT", "BAL"],
+        ["NOR", "TAM"],
+        ["IND", "JAX"],
+        ["WAS", "MIN"],
+        ["SEA", "ATL"],
+        ["CIN", "BUF"],
+        ["DEN", "LVR"],
+        ["CHI", "GNB"],
+        ["LAR", "ARI"],
+        ["HOU", "KAN"],
+        ["PHI", "LAC"],
     ],
     visualize=False,
 )
