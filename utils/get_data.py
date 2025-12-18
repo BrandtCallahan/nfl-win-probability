@@ -11,10 +11,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
+import time
+import rpy2.robjects as robjects
+
 from logzero import logger
 from math import sqrt
 from tqdm import tqdm
-import time
+from rpy2.robjects.packages import importr
+from rpy2.robjects import pandas2ri
+from rpy2.robjects.conversion import localconverter
 
 from utils.webscrape_utils import (
     read_gamelog,
@@ -344,7 +349,7 @@ def save_team_stats(season_year, team_name_list, today):
         # pull out .csv
         try:
             season_gamelogs = pd.read_csv(
-                f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
+                f"~/personal-github/nfl-win-probability/csv_files/{season_year}/season{season_year}_tm_gamelogs.csv",
             )
             season_gamelogs = season_gamelogs.astype(
                 {
@@ -368,7 +373,7 @@ def save_team_stats(season_year, team_name_list, today):
         )
 
         add_tm.to_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/{season_year}/season{season_year}_tm_gamelogs.csv",
             index=False,
         )
 
@@ -382,7 +387,7 @@ def tm_elo_rating(season_year, today):
 
     # read out gamelog
     team_gamelog = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
+        f"~/personal-github/nfl-win-probability/csv_files/{season_year}/season{season_year}_tm_gamelogs.csv"
     )
     # only games less than "today"
     team_gamelog = team_gamelog[
@@ -486,7 +491,7 @@ def tm_lg_ranking(season_year, today):
 
     # read out gamelog
     team_gamelog = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/season{season_year}_tm_gamelogs.csv"
+        f"~/personal-github/nfl-win-probability/csv_files/{season_year}/season{season_year}_tm_gamelogs.csv"
     )
     # only games less than "today"
     team_gamelog = team_gamelog[
@@ -597,6 +602,70 @@ def tm_lg_ranking(season_year, today):
     return rnk_df
 
 
+def save_nfl_odds():
+
+    robjects.r(
+        f"""
+        # Packages
+        library(nflfastR)
+        library(nflplotR)
+        library(nflreadr)
+        library(nflverse)
+        library(dplyr)
+        library(tidyverse)
+        library(readr)
+
+        options(scipen=999)
+
+        past_schedules <-load_schedules(seasons = TRUE)
+    
+        # all NFL games (week by week)
+        games <- past_schedules %>%
+        select(
+            game_id,
+            season,
+            gameday,
+            weekday,
+            away_team,
+            away_score,
+            home_team,
+            home_score,
+            total,
+            spread_line,
+            home_spread_odds,
+            away_spread_odds,
+            total_line,
+            home_moneyline,
+            away_moneyline,
+            div_game,
+        ) %>% 
+        mutate(
+            across(c(spread_line), ~ . * -1)
+        ) %>%
+        rename(
+            hm_spread = spread_line,
+            total_score = total,
+        )
+    """
+    )
+
+    nfl_df = robjects.globalenv["games"]
+
+    with localconverter(robjects.default_converter + pandas2ri.converter) as cv:
+        nfl_df_pd = robjects.conversion.get_conversion().rpy2py(nfl_df)
+
+    # fix null values with replacement
+    nfl_df_pd = nfl_df_pd.replace(-2147483648, np.nan)
+
+    # write the data frame to a CSV file
+    nfl_df_pd.to_csv(
+        f"C:\\Users\\{os.getlogin()}\\personal-github\\nfl-win-probability\\csv_files\\nfl_game_results.csv",
+        index=False,
+    )
+
+    return
+
+
 def nfl_odds(season_year):
     csv_df = pd.read_csv(
         f"~/personal-github/nfl-win-probability/csv_files/nfl_game_results.csv",
@@ -654,10 +723,7 @@ def nfl_odds(season_year):
     )
 
     # limit to 2013 (for now)
-    nfl_df = csv_df[
-        (csv_df["season"].astype("int16") == season_year)
-        # & (csv_df["gameday"] <= pd.to_datetime(today))
-    ]
+    nfl_df = csv_df[(csv_df["season"].astype("int16") == season_year)]
 
     return nfl_df
 
@@ -705,7 +771,7 @@ def game_results(season, save=False):
 
         # read from saved boxscore .csv
         gmlog = pd.read_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_tm_gamelogs.csv",
         )
         tm_gmlog = gmlog[gmlog["Tm"] == team_df["Tm Abbrv"][n]]
 
@@ -978,7 +1044,7 @@ def game_results(season, save=False):
 
     if save:
         season_gm_results.to_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/season{season}_results.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_results.csv",
             index=False,
         )
 
