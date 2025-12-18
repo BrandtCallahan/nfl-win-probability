@@ -20,7 +20,7 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GridSearchCV, train_test_split
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
 from sklearn.feature_selection import SelectKBest, chi2, f_classif
 
@@ -33,7 +33,7 @@ pd.set_option("future.no_silent_downcasting", True)
 
 def gamelog_setup(season, tm_name, gm_date):
 
-    # make sure 'today' is a date and not string
+    # make sure 'gm_date' is a date and not string
     gm_date = pd.to_datetime(gm_date)
 
     team_df = get_teamnm()
@@ -41,7 +41,7 @@ def gamelog_setup(season, tm_name, gm_date):
 
     # pull data from csv_files folder
     gamelog = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_tm_gamelogs.csv",
     )
     team_gamelog = gamelog[gamelog["Tm"] == tm_df["Tm Abbrv"][0]]
 
@@ -68,7 +68,7 @@ def gamelog_setup(season, tm_name, gm_date):
 
         # read in opponent data
         log = pd.read_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/season{season}_tm_gamelogs.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_tm_gamelogs.csv",
         )
         opp_log = log[log["Tm"] == opponent]
 
@@ -345,7 +345,7 @@ def season_data(season):
 
     # read results df
     results_df = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/season{season}_results.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_results.csv",
     )
     season_df = pd.DataFrame()
 
@@ -404,7 +404,7 @@ def season_data(season):
 
     # save .csv file
     season_df.to_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
+        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_matchup_results.csv",
         index=False,
     )
 
@@ -417,7 +417,7 @@ def single_game_model(data_seasons, today, matchup):
     matchup_df = pd.DataFrame()
     for season in data_seasons:
         tmp_df = pd.read_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/season{season}_matchup_results.csv",
+            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
         # concat all years of data into one df
@@ -519,21 +519,51 @@ def single_game_model(data_seasons, today, matchup):
     matchup_data["Away Elo"] = [aw_elo]
     matchup_data["Elo_diff"] = matchup_data["Home Elo"] - matchup_data["Away Elo"]
 
+    # gambling lines for current matchup
+    odds_df = nfl_odds(max(data_seasons)).reset_index(drop=True)
+    odds_df = odds_df[
+        (odds_df["matchup"] == matchup_data["Matchup"][0])
+        & (odds_df["gameday"] == matchup_data["Game Date"][0])
+    ]
+    matchup_data = matchup_data.merge(
+        odds_df[
+            [
+                "matchup",
+                "gameday",
+                "hm_spread",
+                "home_moneyline",
+                "away_moneyline",
+            ]
+        ].rename(
+            columns={
+                "matchup": "Matchup",
+                "gameday": "Game Date",
+                "hm_spread": "Home Spread",
+                "home_moneyline": "Home Moneyline",
+                "away_moneyline": "Away Moneyline",
+            }
+        ),
+        how="left",
+        on=["Matchup", "Game Date"],
+    )
+
     # need to add all columns from matchup_df to matchup_data (the conference dummies)
+    col_list = []
     for col in matchup_df.columns.tolist():
         if col in matchup_data.columns.tolist():
             pass
         else:
-            matchup_data[f"{col}"] = 0
+            # matchup_data[f"{col}"] = 0
+            col_list += [col]
 
     # ensure FG % is not null
-    for col in ['Aw_FGpct', 'Aw_OppFGpct', 'Hm_FGpct', 'Hm_OppFGpct']:
-        matchup_df[f'{col}'] = matchup_df[f'{col}'].fillna(0)
-        matchup_data[f'{col}'] = matchup_data[f'{col}'].fillna(0)
+    for col in ["Aw_FGpct", "Aw_OppFGpct", "Hm_FGpct", "Hm_OppFGpct"]:
+        matchup_df[f"{col}"] = matchup_df[f"{col}"].fillna(0)
+        matchup_data[f"{col}"] = matchup_data[f"{col}"].fillna(0)
 
     # favorite/underdog boolean instead of moneyline odds
     ## will show Home Favorite based on the spread (negative designates favorite)
-    matchup_df['Hm_Favorite'] = matchup_df['Home Spread'] <= 0
+    matchup_df["Hm_Favorite"] = matchup_df["Home Spread"] <= 0
     matchup_data["Hm_Favorite"] = matchup_data["Home Spread"] <= 0
 
     """
@@ -556,11 +586,11 @@ def single_game_model(data_seasons, today, matchup):
                 "Home Spread W",
                 "Away Moneyline",
                 "Home Moneyline",
-                'Hm_Favorite',
+                "Hm_Favorite",
                 "Divisional Game",
                 "Away Team",
                 "Away Elo",
-                "Away Lg Rank",
+                # "Away Lg Rank",
                 "Aw_TmOffEff",
                 "Aw_TmDefEff",
                 "Aw_TmEff",
@@ -609,7 +639,7 @@ def single_game_model(data_seasons, today, matchup):
                 "Aw_TmDiv_NFC West",
                 "Home Team",
                 "Home Elo",
-                "Home Lg Rank",
+                # "Home Lg Rank",
                 "Hm_TmOffEff",
                 "Hm_TmDefEff",
                 "Hm_TmEff",
@@ -660,6 +690,7 @@ def single_game_model(data_seasons, today, matchup):
         ]
         .sort_values(by=["Game Date", "Matchup"])
         .reset_index(drop=True)
+        .fillna({"Home Moneyline": -110, "Away Moneyline": -110})
     )
 
     # fill FG% with median
@@ -686,9 +717,9 @@ def single_game_model(data_seasons, today, matchup):
             "Home Pt Diff",
             "Home Spread",
             "Home Spread W",
-            # "Away Moneyline",
-            # "Home Moneyline",
-            'Hm_Favorite',
+            "Away Moneyline",
+            "Home Moneyline",
+            "Hm_Favorite",
             "Aw_TmOffEff",
             "Aw_TmEff",
             "Aw_W",
@@ -729,8 +760,8 @@ def single_game_model(data_seasons, today, matchup):
             "Elo_diff",
             "Home Elo",
             "Away Elo",
-            "Home Lg Rank",
-            "Away Lg Rank",
+            # "Home Lg Rank",
+            # "Away Lg Rank",
         ]
     ].astype(
         {
@@ -753,7 +784,7 @@ def single_game_model(data_seasons, today, matchup):
         "Home Pt Diff",
         "Hm_Pts",
     ]:
-        logger.info(f"data transformed: setting target variable - {target_variable}")
+        # logger.info(f"data transformed: setting target variable - {target_variable}")
         # target variable
         y = model_df[
             [
@@ -772,6 +803,7 @@ def single_game_model(data_seasons, today, matchup):
                     "Game Date",
                     "Home Pt Diff",
                     "Home Spread W",
+                    "Home Spread",
                     f"{target_variable}",
                 ]
             )
@@ -795,54 +827,73 @@ def single_game_model(data_seasons, today, matchup):
         """
             Run Model
         """
-        logger.info(f"commence model run... NOW")
+        # logger.info(f"commence model run... NOW")
         # in order to predict probability of attendance use "model.predict_proba()"
 
         # split data
         X_train, X_test, y_train, y_test = train_test_split(
             model_X.iloc[1:],
             model_y.iloc[1:],
-            test_size=0.3,
+            test_size=0.25,
             random_state=14,
         )
 
         # call model with parameters
         if target_variable in ["Home W", "Home Spread W"]:
-            model = KNeighborsClassifier(
-                n_neighbors=100,
-                weights="distance",
-                metric="cityblock",
-                p=1,
+            GScv = GridSearchCV(
+                estimator=KNeighborsClassifier(),
+                param_grid={
+                    "n_neighbors": (5, 50, 100, 250),
+                    "weights": ("uniform", "distance"),
+                    "metric": ("cityblock", "minkowski", "euclidean"),
+                    "p": (1, 2),
+                },
+                scoring="f1",
             )
-            model.fit(X_train, np.ravel(y_train))
+            GScv.fit(X_train, np.ravel(y_train))
+
+            model = GScv.best_estimator_
 
         else:
-            model = KNeighborsRegressor(
-                n_neighbors=100,
-                weights="distance",
-                metric="cityblock",
+            GScv = GridSearchCV(
+                estimator=KNeighborsRegressor(),
+                param_grid={
+                    "n_neighbors": (5, 50, 100, 250),
+                    "weights": ("uniform", "distance"),
+                    "metric": ("cityblock", "minkowski", "euclidean"),
+                    "p": (1, 2),
+                },
+                scoring="r2",
             )
-            model.fit(X_train, np.ravel(y_train))
+            GScv.fit(X_train, np.ravel(y_train))
+
+            model = GScv.best_estimator_
 
         """
                 FINDING best features
         """
         features = model_X.columns.tolist()
-        f_statistic, p_values = f_classif(model_X, model_y)
+        f_statistic, p_values = f_classif(model_X, np.ravel(model_y))
 
-        feat_df = pd.DataFrame(data={
-            'features': features,
-            'f_stat': f_statistic,
-            'p_values': p_values,
-        }).sort_values(by=['p_values'], ascending=True)
+        feat_df = (
+            pd.DataFrame(
+                data={
+                    "features": features,
+                    "f_stat": f_statistic,
+                    "p_values": p_values,
+                }
+            )
+            .sort_values(by=["p_values"], ascending=True)
+            .reset_index(drop=True)
+        )
 
-        feature_list = feat_df[feat_df['p_values'] <= 0.01].features.tolist()
+        # HOLD OUT FOR NOW: feat_df = feat_df[feat_df["f_stat"] > feat_df.f_stat.mean()]
+        feature_list = feat_df.features.tolist()
 
         # re-run model with "important" features
         model.fit(X_train[feature_list], np.ravel(y_train))
 
         # suppress scientific notation
-        # logger.info(f"predicting test set")
         np.set_printoptions(suppress=True)
         predictions = model.predict(X_test[feature_list])
         if target_variable in ["Home W", "Home Spread W"]:
@@ -938,7 +989,7 @@ def single_game_model(data_seasons, today, matchup):
         """
             Matchup Prediction (probability of home team winning)
         """
-        logger.info(f"predicting {target_variable}: {matchup_data["Matchup"][0]}")
+        # logger.info(f"predicting {target_variable}: {matchup_data["Matchup"][0]}")
 
         prediction_df = matchup_data[feature_list]
 
@@ -959,10 +1010,6 @@ def single_game_model(data_seasons, today, matchup):
                 tmp_prob = prediction_prob[i]
                 w_prob += [tmp_prob[1]]
 
-        """
-            TODO: Need to see how the new 'Home Spread W' effects all this!!
-        """
-
         # view results in df
         pred_df = pd.DataFrame(
             columns=[
@@ -972,6 +1019,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Away Team",
                 f"Predict",
                 f"Predict Probability",
+                "Away Moneyline",
+                "Home Moneyline",
+                "Home Spread",
             ]
         )
 
@@ -985,23 +1035,34 @@ def single_game_model(data_seasons, today, matchup):
         pred_df["Game Date"] = matchup_data.iloc[mylist]["Game Date"]
         pred_df["Home Team"] = matchup_data.iloc[mylist]["Hm_Tm"]
         pred_df["Away Team"] = matchup_data.iloc[mylist]["Aw_Tm"]
+        pred_df["Away Moneyline"] = matchup_data.iloc[mylist]["Away Moneyline"]
+        pred_df["Home Moneyline"] = matchup_data.iloc[mylist]["Home Moneyline"]
+        pred_df["Home Spread"] = matchup_data.iloc[mylist]["Home Spread"]
 
         pred_df[f"Predict"] = w_pred
 
-        if target_variable in ["Home W", 'Home Spread W']:
+        if target_variable in ["Home W", "Home Spread W"]:
             pred_df[f"Predict Probability"] = w_prob
 
             # round the probability variable
             pred_df["Predict Probability"] = np.round(pred_df["Predict Probability"], 4)
 
-        if final_pred_df.empty:
+        if (final_pred_df.empty) & (target_variable in ["Home W", "Home Spread W"]):
             final_pred_df = pred_df.rename(
                 columns={
                     "Predict": f"{target_variable}",
                     "Predict Probability": f"{target_variable} Probability",
                 }
             )
-        elif target_variable in ["Home W", 'Home Spread W']:
+        elif (final_pred_df.empty) & (
+            target_variable not in ["Home W", "Home Spred W"]
+        ):
+            final_pred_df = pred_df.rename(
+                columns={
+                    "Predict": f"{target_variable}",
+                }
+            )
+        elif target_variable in ["Home W", "Home Spread W"]:
             final_pred_df = final_pred_df.merge(
                 pred_df[["Matchup", "Predict", "Predict Probability"]],
                 how="inner",
@@ -1022,7 +1083,7 @@ def single_game_model(data_seasons, today, matchup):
             drop=True
         )
 
-    # # ensure no tie (home team +1)
+    ## ensure no tie (home team +1)
     # if (
     #     round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
     # ) & (final_pred_df["Home W Probability"][0] > 0.5):
@@ -1068,6 +1129,14 @@ def single_game_model(data_seasons, today, matchup):
                 1 - final_pred_df["Home Spread W Probability"][0],
                 final_pred_df["Home Spread W Probability"][0],
             ],
+            "M/L": [
+                final_pred_df["Away Moneyline"][0],
+                final_pred_df["Home Moneyline"][0],
+            ],
+            "Spread": [
+                final_pred_df["Home Spread"][0] * -1,
+                final_pred_df["Home Spread"][0],
+            ],
         }
     )
 
@@ -1100,14 +1169,32 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
 
     away_score = sim_results_df["Pred. Pts"][0]
     home_score = sim_results_df["Pred. Pts"][1]
-    # recalculate pt spread with tm scores
-    ## using calculated pt diff (again)
-    ## pt_spread = abs(home_score - away_score)
 
     sim_results = [gm_winner, pt_spread, away_win_prob, home_win_prob]
     win_prob = [away_win_prob, home_win_prob]
 
     mov = sim_results[1]
+
+    # gambling lines
+    spread = sim_results_df["Spread"][1]
+    if spread < 0:
+        spread = f"{spread}"
+    elif spread > 0:
+        spread = f"+{spread}"
+    else:
+        spread = "Even"
+
+    aw_moneyline = int(sim_results_df["M/L"][0])
+    if aw_moneyline > 0:
+        aw_moneyline = f"+{aw_moneyline}"
+    else:
+        aw_moneyline = f"{aw_moneyline}"
+
+    hm_moneyline = int(sim_results_df["M/L"][1])
+    if hm_moneyline > 0:
+        hm_moneyline = f"+{hm_moneyline}"
+    else:
+        hm_moneyline = f"{hm_moneyline}"
 
     home_tm_color_prim = get_teamcolor_prim(home_tm)
     home_tm_color_sec = get_teamcolor_sec(home_tm)
@@ -1178,8 +1265,27 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.text(
         0,
         0,
-        f"Location: @ {home_tm}\n\n Total Pts: {int(round(away_score, 0)) + int(round(home_score, 0))}\n Margin of Victory: {round(pt_spread, 1)}",
-        # f"Location: @ {home_abbr}",
+        f"Location: @ {home_tm} ({spread})\n\n Total Pts: {int(round(away_score, 0)) + int(round(home_score, 0))}\n Margin of Victory: {math.ceil(pt_spread)}",
+        ha="center",
+        va="center",
+        fontsize=11,
+    )
+
+    # add moneylines below team helmets
+    ## home helmet
+    plt.text(
+        1.45,
+        -1.25,
+        f"{hm_moneyline}",
+        ha="center",
+        va="center",
+        fontsize=11,
+    )
+    ## away helmet
+    plt.text(
+        -1.45,
+        -1.25,
+        f"{aw_moneyline}",
         ha="center",
         va="center",
         fontsize=11,

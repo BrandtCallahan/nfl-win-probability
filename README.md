@@ -10,19 +10,19 @@ In order to add or refresh data, you can run the refresh_data() function which c
 refresh_data(2025)
 
 #### 3. Running the Code
-The nfl_singlegame.py file also holds the run_model() function that will allow you to run the model and output a win probability graph like the one shown below. The inputs that that function needs are the season the game is from, the day of the game(s), the number of seasons of data you want the model to train on, the matchup(s) in a list format and a True/False value for whether or not you want the visual displayed. If you want to run multiple matchups, then you can just add those matchups to the matchup parameter in a list format. The abbreviations for each team can be found at the bottom (or in the team.csv file).
+The nfl_singlegame.py file also holds the run_model() function that will allow you to run the model and output a win probability graph like the one shown below. The inputs that that function needs are the season the game is from, the week of the game(s), the number of seasons of data you want the model to train on, the team of focus or an output of "ALL" to see all of the week's matchups, and a True/False value for whether or not you want the visual displayed. If you are looking to only focus on one team's matchup for the week the abbreviations for each team can be found at the bottom (or in the team.csv file).
 
-To ouput this Patriots vs. Titans game:
+To ouput this Chiefs vs. Titans game:
 
 run_model(<br>
     &emsp;season=2025,<br>
-    &emsp;today=pd.to_datetime('2025-10-19').strftime('%Y-%m-%d'),<br>
+    &emsp;week=16,<br>
+    &emsp;team_focus="TEN",<br>
     &emsp;num_season=10,<br>
-    &emsp;matchup=[['NWE', 'TEN']],<br>
     &emsp;visualize=True,<br>
 )
 
-<img width="640" height="480" alt="nwe_v_ten_1019" src="https://github.com/user-attachments/assets/b1e489d8-492a-4f42-b33b-e9add51734e3" />
+<img width="640" height="480" alt="kan_v_ten_1221" src="https://github.com/user-attachments/assets/b1e489d8-492a-4f42-b33b-e9add51734e3" />
 
 
 | AFC East | AFC North | AFC South | AFC West |
