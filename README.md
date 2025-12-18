@@ -22,7 +22,7 @@ run_model(<br>
     &emsp;visualize=True,<br>
 )
 
-<img width="640" height="480" alt="kan_v_ten_1221" src="https://github.com/user-attachments/assets/b1e489d8-492a-4f42-b33b-e9add51734e3" />
+<img width="640" height="480" alt="kan_v_ten_1221" src="https://github.com/user-attachments/assets/93e5b9ea-f7b7-4686-8e23-4b622ce1b025" />
 
 
 | AFC East | AFC North | AFC South | AFC West |
