@@ -9,21 +9,22 @@ import os
 from scipy.stats import norm
 import matplotlib.pyplot as plt
 from PIL import Image
-import plotly.graph_objects as go
-import matplotlib.image as mpimg
+from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
 from sklearn.metrics import (
     ConfusionMatrixDisplay,
     confusion_matrix,
     f1_score,
+    mean_absolute_error,
     mean_squared_error,
     precision_score,
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import GridSearchCV, train_test_split
+from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
 from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
-from sklearn.feature_selection import SelectKBest, chi2, f_classif
+from sklearn.feature_selection import f_classif
 
+# import from other folders
 from utils.get_data import *
 from utils.team_dict import *
 from utils.beautiful_soup_helper import *
@@ -31,393 +32,16 @@ from utils.beautiful_soup_helper import *
 pd.set_option("future.no_silent_downcasting", True)
 
 
-def gamelog_setup(season, tm_name, gm_date):
-
-    # make sure 'gm_date' is a date and not string
-    gm_date = pd.to_datetime(gm_date)
-
-    team_df = get_teamnm()
-    tm_df = team_df[team_df["Tm Abbrv"] == tm_name].reset_index(drop=True)
-
-    # pull data from csv_files folder
-    gamelog = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_tm_gamelogs.csv",
-    )
-    team_gamelog = gamelog[gamelog["Tm"] == tm_df["Tm Abbrv"][0]]
-
-    team_gamelog = team_gamelog[
-        (
-            ~(team_gamelog["Opp"].isin(["", "Opponent", "Opp"]))
-            & ~(team_gamelog["W/L"].isin(["", np.nan, pd.NA]))
-        )
-    ].reset_index(drop=True)
-
-    # add season column
-    team_gamelog["Season"] = season
-
-    """
-        Building SOS and SOR metrics
-        - SOS: looking at your opponents records (sum wins for all opponents divide by total games)
-        - SOS_2: looking at your opponents opponents records (2*OR+OOR / 3)
-    """
-    # SOS (Opponent Win %) (at time of game)
-    opp_sos_df = pd.DataFrame()
-    for week in range(len(team_gamelog)):
-        opponent = team_gamelog["Opp"][week]
-        gm_day = team_gamelog["Date"][week]
-
-        # read in opponent data
-        log = pd.read_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_tm_gamelogs.csv",
-        )
-        opp_log = log[log["Tm"] == opponent]
-
-        opp_log = opp_log[
-            (
-                ~(opp_log["Opp"].isin(["", "Opponent", "Opp"]))
-                & ~(opp_log["W/L"].isin(["", np.nan, pd.NA]))
-            )
-        ].reset_index(drop=True)
-
-        opp_log = opp_log[opp_log["Date"] < gm_day]
-
-        try:
-            # friendly win/loss
-            opp_log.loc[opp_log["W/L"].str.contains("W"), "W/L Flag"] = 1
-            opp_log["W/L Flag"] = opp_log["W/L Flag"].fillna(0)
-
-            opp_log["W/L"] = opp_log["W/L"].str[0]
-
-            # running sum W
-            opp_log["Opp W"] = opp_log.groupby(["Tm"])["W/L Flag"].cumsum()
-            opp_log["Opp W%"] = opp_log["Opp W"] / opp_log["G"].astype(int)
-
-            opp_log["Gm Date"] = gm_day
-
-            if opp_sos_df.empty:
-                opp_sos_df = opp_log.iloc[opp_log.index.max() :, :][
-                    ["Gm Date", "Tm", "Opp W%"]
-                ].rename(columns={"Tm": "Opp", "Gm Date": "Date"})
-            else:
-                opp_sos_df = pd.concat(
-                    [
-                        opp_sos_df,
-                        opp_log.iloc[opp_log.index.max() :, :][
-                            ["Gm Date", "Tm", "Opp W%"]
-                        ].rename(columns={"Tm": "Opp", "Gm Date": "Date"}),
-                    ]
-                ).reset_index(drop=True)
-        except ValueError:
-            pass
-
-    opp_sos_df["Tm"] = tm_name
-
-    opp_sos = pd.DataFrame()
-    for i in range(len(opp_sos_df)):
-        opp_df = (
-            opp_sos_df.iloc[: i + 1]
-            .groupby(["Tm"])
-            .agg(
-                last_gm_date=("Date", "last"),
-                opp_sos=("Opp W%", "mean"),
-                Opp=("Opp", "last"),
-            )
-            .reset_index()
-        )
-
-        if opp_sos.empty:
-            opp_sos = opp_df[["Tm", "last_gm_date", "Opp", "opp_sos"]].rename(
-                columns={"last_gm_date": "Date", "opp_sos": "Opp SOS"}
-            )
-        else:
-            opp_sos = pd.concat(
-                [
-                    opp_sos,
-                    opp_df[["Tm", "last_gm_date", "Opp", "opp_sos"]].rename(
-                        columns={"last_gm_date": "Date", "opp_sos": "Opp SOS"}
-                    ),
-                ]
-            ).reset_index(drop=True)
-
-    # merge in Opp SOS
-    team_gamelog = team_gamelog.merge(opp_sos, how="left", on=["Tm", "Date", "Opp"])
-    team_gamelog["Opp SOS"] = team_gamelog["Opp SOS"].fillna(0.5)
-
-    # 3rd Down Conversion
-    team_gamelog["3Dwn Conv %"] = (
-        team_gamelog["3rd Dwn Conv"] / team_gamelog["3rd Dwn Att"]
-    )
-    team_gamelog["Opp 3Dwn Conv %"] = (
-        team_gamelog["Opp 3rd Dwn Conv"] / team_gamelog["Opp 3rd Dwn Att"]
-    )
-
-    # FG%
-    team_gamelog["FG%"] = team_gamelog["FGM"] / team_gamelog["FGA"]
-    team_gamelog["Opp FG%"] = team_gamelog["Opp FGM"] / team_gamelog["Opp FGA"]
-
-    # TO +/-
-    team_gamelog["TO +/-"] = team_gamelog["Opp Tot TO"] - team_gamelog["Tot TO"]
-
-    # friendly win/loss
-    team_gamelog.loc[team_gamelog["W/L"].str.contains("W"), "W/L Flag"] = 1
-    team_gamelog["W/L Flag"] = team_gamelog["W/L Flag"].fillna(0)
-
-    team_gamelog["W/L"] = team_gamelog["W/L"].str[0]
-
-    # running sum W
-    team_gamelog["Total W"] = team_gamelog.groupby(["Tm"])["W/L Flag"].cumsum()
-    team_gamelog["Total W%"] = team_gamelog["Total W"] / team_gamelog["G"].astype(int)
-
-    # streaks
-    team_gamelog.loc[(team_gamelog["W/L"] == "L"), "Streak Value"] = -1
-    team_gamelog["Streak Value"] = team_gamelog["Streak Value"].fillna(1)
-
-    team_gamelog["Start Streak"] = team_gamelog["Streak Value"].ne(
-        team_gamelog["Streak Value"].shift()
-    )
-    team_gamelog["Streak Id"] = team_gamelog["Start Streak"].cumsum()
-    team_gamelog["Running Streak"] = team_gamelog.groupby("Streak Id").cumcount() + 1
-
-    # W Streak == +, L Streak == -, Tie == 0
-    team_gamelog.loc[team_gamelog["W/L"] == "W", "Streak +/-"] = team_gamelog[
-        "Running Streak"
-    ]
-    team_gamelog.loc[team_gamelog["W/L"] == "L", "Streak +/-"] = (
-        team_gamelog["Running Streak"] * -1
-    )
-    team_gamelog.loc[team_gamelog["W/L"] == "T", "Streak +/-"] = 0
-    team_gamelog["Streak +/-"] = team_gamelog["Streak +/-"].astype(int)
-    team_gamelog = team_gamelog.drop(
-        columns=["Streak Value", "Start Streak", "Streak Id", "Running Streak"]
-    )
-
-    # possessions
-    team_gamelog["Poss"] = (
-        team_gamelog["Tot TO"].astype(int)
-        + team_gamelog["Punt Att"].astype(int)
-        + team_gamelog["Pass TD"].astype(int)
-        + team_gamelog["Rush TD"].astype(int)
-        + team_gamelog["FGA"].astype(int)
-    )
-    team_gamelog["Opp Poss"] = (
-        team_gamelog["Opp Tot TO"].astype(int)
-        + team_gamelog["Opp Punt Att"].astype(int)
-        + team_gamelog["Opp Pass TD"].astype(int)
-        + team_gamelog["Opp Rush TD"].astype(int)
-        + team_gamelog["Opp FGA"].astype(int)
-    )
-
-    # offense ratings
-    team_gamelog["Pass Off Eff"] = team_gamelog["Pass Rate"].astype(float)
-    team_gamelog["Rush Off Eff"] = team_gamelog["Rush Y/A"].astype(float)
-    # compare to college avg. (passer rating avg. is 100)
-    team_gamelog["Adj Pass Off Eff"] = team_gamelog["Pass Off Eff"] - 100
-    team_gamelog["Adj Rush Off Eff"] = (
-        team_gamelog["Rush Off Eff"] - gamelog["Rush Y/A"].median()
-    )
-    # offense efficency
-    # defined as Points per Possession
-    team_gamelog["Off Eff"] = team_gamelog["Tm Pts"] / team_gamelog["Poss"]
-
-    # defense ratings
-    team_gamelog["Pass Def Eff"] = team_gamelog["Opp Pass Rate"].astype(float)
-    team_gamelog["Rush Def Eff"] = team_gamelog["Opp Rush Y/A"].astype(float)
-    # compare to college avg.
-    team_gamelog["Adj Pass Def Eff"] = team_gamelog["Pass Def Eff"] - 100
-    team_gamelog["Adj Rush Def Eff"] = (
-        team_gamelog["Rush Def Eff"] - gamelog["Opp Rush Y/A"].median()
-    )
-    # defense efficency
-    team_gamelog["Def Eff"] = team_gamelog["Opp Pts"] / team_gamelog["Opp Poss"]
-
-    # tm effieciency rating
-    team_gamelog["Tm Eff"] = team_gamelog["Off Eff"] - team_gamelog["Def Eff"]
-
-    # margin of victory
-    team_gamelog["Margin Victory"] = team_gamelog["Tm Pts"].astype(int) - team_gamelog[
-        "Opp Pts"
-    ].astype(int)
-
-    # game luck
-    team_gamelog["Tm Luck"] = (
-        (team_gamelog["Tm Pts"] / team_gamelog["Opp Pts"].replace(0, 1)) ** 2.37
-    ) / (((team_gamelog["Tm Pts"] / team_gamelog["Opp Pts"].replace(0, 1)) ** 2.37) + 1)
-
-    # flag conference games (regular season)
-    team_gamelog.loc[
-        (team_gamelog["Tm Div"] == team_gamelog["Opp Div"]), "Div Game"
-    ] = 1
-    team_gamelog["Div Game"] = team_gamelog["Div Game"].fillna(0)
-
-    # rename Home/Away/Neutral to 2/1/0
-    location_dict = {
-        "@": 1,
-        "N": 0,
-    }
-    team_gamelog["Location"] = (team_gamelog["Location"].map(location_dict)).fillna(2)
-    team_gamelog["Location"] = team_gamelog["Location"].astype(int)
-
-    # limit data to only show up to defined date (not including)
-    team_gamelog = team_gamelog[
-        (team_gamelog["Date"].astype("datetime64[ns]") < gm_date)
-    ].reset_index(drop=True)
-
-    return team_gamelog
-
-
-def rolling_gamedata(season, hm_tm, aw_tm, gm_date):
-    # pull both team's gamelogs up to game
-    hm_gm_log = gamelog_setup(season, hm_tm, gm_date)
-    aw_gm_log = gamelog_setup(season, aw_tm, gm_date)
-
-    gm_log = pd.concat([hm_gm_log, aw_gm_log])
-
-    # group gamelog stats (season avg.)
-    gm_df = (
-        gm_log.groupby(["Tm"], observed=True)
-        .agg(
-            W=("W/L Flag", "sum"),
-            Wpct=("Total W%", "last"),
-            Poss=("Poss", "median"),
-            OppPoss=("Opp Poss", "median"),
-            PassOffEff=("Adj Pass Off Eff", "median"),
-            RushOffEff=("Adj Rush Off Eff", "median"),
-            PassDefEff=("Adj Pass Def Eff", "median"),
-            RushDefEff=("Adj Rush Def Eff", "median"),
-            TmOffEff=("Off Eff", "median"),
-            TmDefEff=("Def Eff", "median"),
-            TmEff=("Tm Eff", "median"),
-            TmLuckW=("Tm Luck", "sum"),
-            Pts=("Tm Pts", "median"),
-            OppPts=("Opp Pts", "median"),
-            TmDiv=("Tm Div", "first"),
-            WStreak=("Streak +/-", "last"),
-            AvgMoV=("Margin Victory", "median"),
-            TotPtDiff=("Margin Victory", "sum"),
-            OppSOS=("Opp SOS", "last"),
-            # start boxscore stats
-            PassCmppct=("Pass Cmp %", "median"),
-            PassAdjYdsAtt=("Pass Adj Y/A", "median"),
-            RushYdsAtt=("Rush Y/A", "median"),
-            PassTDG=("Pass TD", "median"),
-            RushTDG=("Rush TD", "median"),
-            FGpct=("FG%", "median"),
-            PenYdsG=("Pen Yds", "median"),
-            TOVG=("Tot TO", "median"),
-            TO=("TO +/-", "sum"),
-            Dwn3Conv=("3Dwn Conv %", "median"),
-            # opponent boxscore stats
-            OppPassCmppct=("Opp Pass Cmp %", "median"),
-            OppPassAdjYdsAtt=("Opp Pass Adj Y/A", "median"),
-            OppRushYdsAtt=("Opp Rush Y/A", "median"),
-            OppPassTDG=("Opp Pass TD", "median"),
-            OppRushTDG=("Opp Rush TD", "median"),
-            OppFGpct=("Opp FG%", "median"),
-            OppPenYdsG=("Opp Pen Yds", "median"),
-            OppTOVG=("Opp Tot TO", "median"),
-            OppDwn3Conv=("3Dwn Conv %", "median"),
-        )
-        .reset_index()
-    )
-    gm_df["TmLuck"] = gm_df["W"] - gm_df["TmLuckW"]
-    gm_df["Game Date"] = gm_date
-    gm_df["Season"] = season
-
-    # transform gm_df into single line game for game results df
-    hm = (
-        gm_df[gm_df["Tm"] == hm_tm]
-        .add_prefix("Hm_")
-        .rename(columns={"Hm_Game Date": "Game Date"})
-    )
-    aw = (
-        gm_df[gm_df["Tm"] == aw_tm]
-        .add_prefix("Aw_")
-        .rename(columns={"Aw_Game Date": "Game Date"})
-    )
-
-    full_gm_df = (aw.merge(hm, how="outer", on=["Game Date"])).reset_index(drop=True)
-    full_gm_df["Matchup"] = full_gm_df["Aw_Tm"] + " vs. " + full_gm_df["Hm_Tm"]
-
-    return full_gm_df
-
-
-def season_data(season):
-
-    # read results df
-    results_df = pd.read_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_results.csv",
-    )
-    season_df = pd.DataFrame()
-
-    # for each result, run rolling_gamedata()
-    for n, matchup in enumerate(results_df["Matchup"].tolist()):
-        logger.info(
-            f"{n+1}/{len(results_df["Matchup"].tolist())}: {results_df["Matchup"].tolist()[n]}"
-        )
-
-        hm_tm = results_df["Home Team"][n]
-        aw_tm = results_df["Away Team"][n]
-        gm_date = results_df["Game Date"][n]
-
-        try:
-            gamelog_stats = rolling_gamedata(season, hm_tm, aw_tm, gm_date)
-
-            try:
-                gamelog_stats = gamelog_stats.merge(
-                    results_df[
-                        [
-                            "Matchup",
-                            "Home Team",
-                            "Home Elo",
-                            "Home Lg Rank",
-                            "Away Team",
-                            "Away Elo",
-                            "Away Lg Rank",
-                            "Home W",
-                            "Home Pt Diff",
-                            "Home Spread",
-                            "Home Spread W",
-                            "Home Moneyline",
-                            "Away Moneyline",
-                            # "Neutral Game",
-                            "Divisional Game",
-                            "Playoff Game",
-                        ]
-                    ],
-                    how="inner",
-                    left_on=["Matchup", "Aw_Tm", "Hm_Tm"],
-                    right_on=["Matchup", "Away Team", "Home Team"],
-                )
-
-                season_df = (
-                    pd.concat([season_df, gamelog_stats])
-                    .drop_duplicates(subset=["Matchup", "Game Date"])
-                    .reset_index(drop=True)
-                )
-
-            except ValueError:
-                pass
-        except ValueError:
-            pass
-        except KeyError:
-            pass
-
-    # save .csv file
-    season_df.to_csv(
-        f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_matchup_results.csv",
-        index=False,
-    )
-
-    return season_df
-
-
 def single_game_model(data_seasons, today, matchup):
+
+    # make sure data_seasons is sorted
+    data_seasons.sort()
 
     # load up matchup results for training
     matchup_df = pd.DataFrame()
     for season in data_seasons:
         tmp_df = pd.read_csv(
-            f"~/personal-github/nfl-win-probability/csv_files/{season}/season{season}_matchup_results.csv",
+            f"C:/Users/{os.getlogin()}/personal-github/nfl-win-probability/csv_files/{season}/season{season}_matchup_results.csv",
         )
         tmp_df = tmp_df.astype({"Game Date": "datetime64[ns]"})
         # concat all years of data into one df
@@ -445,7 +69,8 @@ def single_game_model(data_seasons, today, matchup):
     # join back to matchup_df
     matchup_df = pd.concat([matchup_df, hm_conf_dummy_df, aw_conf_dummy_df], axis=1)
 
-    # tf_dict = {True: 1, False: 0}
+    # dictionary available to map True/False values to 1/0 (respectively)
+    tf_dict = {True: 1, False: 0}
 
     # data for the matchup
     hm_tm = matchup.split(" vs. ")[1]
@@ -523,7 +148,10 @@ def single_game_model(data_seasons, today, matchup):
     odds_df = nfl_odds(max(data_seasons)).reset_index(drop=True)
     odds_df = odds_df[
         (odds_df["matchup"] == matchup_data["Matchup"][0])
-        & (odds_df["gameday"] == matchup_data["Game Date"][0])
+        & (
+            (pd.to_datetime(odds_df["gameday"].astype(object)).astype(str))
+            == str(matchup_data["Game Date"][0].strftime("%Y-%m-%d"))
+        )
     ]
     matchup_data = matchup_data.merge(
         odds_df[
@@ -594,7 +222,10 @@ def single_game_model(data_seasons, today, matchup):
                 "Aw_TmOffEff",
                 "Aw_TmDefEff",
                 "Aw_TmEff",
+                "Aw_OffEffAdj",
+                "Aw_DefEffAdj",
                 "Aw_W",
+                "Aw_G",
                 "Aw_Wpct",
                 "Aw_WStreak",
                 "Aw_OppSOS",
@@ -643,7 +274,10 @@ def single_game_model(data_seasons, today, matchup):
                 "Hm_TmOffEff",
                 "Hm_TmDefEff",
                 "Hm_TmEff",
+                "Hm_OffEffAdj",
+                "Hm_DefEffAdj",
                 "Hm_W",
+                "Hm_G",
                 "Hm_Wpct",
                 "Hm_WStreak",
                 "Hm_OppSOS",
@@ -693,6 +327,9 @@ def single_game_model(data_seasons, today, matchup):
         .fillna({"Home Moneyline": -110, "Away Moneyline": -110})
     )
 
+    # map Hm_Favorite to numeric value
+    model_df["Hm_Favorite"] = model_df["Hm_Favorite"].map(tf_dict)
+
     # fill FG% with median
     model_df["Hm_FGpct"] = model_df["Hm_FGpct"].fillna(model_df["Hm_FGpct"].median())
     model_df["Hm_OppFGpct"] = model_df["Hm_OppFGpct"].fillna(
@@ -722,7 +359,10 @@ def single_game_model(data_seasons, today, matchup):
             "Hm_Favorite",
             "Aw_TmOffEff",
             "Aw_TmEff",
+            "Aw_OffEffAdj",
+            "Aw_DefEffAdj",
             "Aw_W",
+            "Aw_G",
             "Aw_WStreak",
             "Aw_OppSOS",
             "Aw_TotPtDiff",
@@ -738,7 +378,10 @@ def single_game_model(data_seasons, today, matchup):
             "Aw_TmLuck",
             "Hm_TmOffEff",
             "Hm_TmEff",
+            "Hm_OffEffAdj",
+            "Hm_DefEffAdj",
             "Hm_W",
+            "Hm_G",
             "Hm_WStreak",
             "Hm_OppSOS",
             "Hm_TotPtDiff",
@@ -772,6 +415,32 @@ def single_game_model(data_seasons, today, matchup):
         }
     )
 
+    # adding record columns (format: W-L)
+    ## loss calculated as G minus W
+    model_df['Hm_L'] = model_df['Hm_G'] - model_df['Hm_W']
+    model_df['Hm_Record'] = (model_df['Hm_W'].astype(int).astype(str)) + '-' + (model_df['Hm_L'].astype(int).astype(str))
+    model_df["Aw_L"] = model_df["Aw_G"] - model_df["Aw_W"]
+    model_df["Aw_Record"] = (
+        (model_df["Aw_W"].astype(int).astype(str))
+        + "-"
+        + (model_df["Aw_L"].astype(int).astype(str))
+    )
+
+    # adding to matchup_data
+    ## loss calculated as G minus W
+    matchup_data["Hm_L"] = matchup_data["Hm_G"] - matchup_data["Hm_W"]
+    matchup_data["Hm_Record"] = (
+        (matchup_data["Hm_W"].astype(int).astype(str))
+        + "-"
+        + (matchup_data["Hm_L"].astype(int).astype(str))
+    )
+    matchup_data["Aw_L"] = matchup_data["Aw_G"] - matchup_data["Aw_W"]
+    matchup_data["Aw_Record"] = (
+        (matchup_data["Aw_W"].astype(int).astype(str))
+        + "-"
+        + (matchup_data["Aw_L"].astype(int).astype(str))
+    )
+
     """
         Set Target Variables/DFs
     """
@@ -783,6 +452,7 @@ def single_game_model(data_seasons, today, matchup):
         "Home Spread W",
         "Home Pt Diff",
         "Hm_Pts",
+        "Aw_Pts",
     ]:
         # logger.info(f"data transformed: setting target variable - {target_variable}")
         # target variable
@@ -804,6 +474,11 @@ def single_game_model(data_seasons, today, matchup):
                     "Home Pt Diff",
                     "Home Spread W",
                     "Home Spread",
+                    "Away Moneyline",
+                    "Home Moneyline",
+                    "Hm_Favorite",
+                    'Aw_Record',
+                    'Hm_Record',
                     f"{target_variable}",
                 ]
             )
@@ -819,6 +494,12 @@ def single_game_model(data_seasons, today, matchup):
                     "Home Spread W",
                     "Hm_Pts",
                     "Aw_Pts",
+                    "Away Moneyline",
+                    "Home Moneyline",
+                    "Hm_Favorite",
+                    "Home Spread",
+                    "Aw_Record",
+                    "Hm_Record",
                     f"{target_variable}",
                 ]
             )
@@ -841,12 +522,11 @@ def single_game_model(data_seasons, today, matchup):
         # call model with parameters
         if target_variable in ["Home W", "Home Spread W"]:
             GScv = GridSearchCV(
-                estimator=KNeighborsClassifier(),
+                estimator=RandomForestClassifier(random_state=14),
                 param_grid={
-                    "n_neighbors": (5, 50, 100, 250),
-                    "weights": ("uniform", "distance"),
-                    "metric": ("cityblock", "minkowski", "euclidean"),
-                    "p": (1, 2),
+                    "n_estimators": (100, 250, 500),
+                    "criterion": ("gini", "entropy"),
+                    "class_weight": ("balanced", None),
                 },
                 scoring="f1",
             )
@@ -856,12 +536,10 @@ def single_game_model(data_seasons, today, matchup):
 
         else:
             GScv = GridSearchCV(
-                estimator=KNeighborsRegressor(),
+                estimator=RandomForestRegressor(random_state=14),
                 param_grid={
-                    "n_neighbors": (5, 50, 100, 250),
-                    "weights": ("uniform", "distance"),
-                    "metric": ("cityblock", "minkowski", "euclidean"),
-                    "p": (1, 2),
+                    "n_estimators": (100, 250, 500),
+                    "criterion": ("gini", "entropy"),
                 },
                 scoring="r2",
             )
@@ -887,8 +565,14 @@ def single_game_model(data_seasons, today, matchup):
             .reset_index(drop=True)
         )
 
-        # HOLD OUT FOR NOW: feat_df = feat_df[feat_df["f_stat"] > feat_df.f_stat.mean()]
-        feature_list = feat_df.features.tolist()
+        # limit to feature significance of <= 0.05
+        feature_list = feat_df[feat_df["p_values"] <= 0.05].features.tolist()
+
+        # limit to Top n features
+        # feature_list = feat_df.iloc[:5].features.tolist()
+
+        # USE IF ALL FEATURES WANTED
+        # feature_list = feat_df.features.tolist()
 
         # re-run model with "important" features
         model.fit(X_train[feature_list], np.ravel(y_train))
@@ -917,7 +601,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Matchup",
                 "Game Date",
                 "Home Team",
+                "Home Record",
                 "Away Team",
+                "Away Record",
                 "Home W",
                 "Home Spread W",
                 "Predict",
@@ -934,7 +620,9 @@ def single_game_model(data_seasons, today, matchup):
         tmp_df["Matchup"] = model_df.iloc[mylist]["Matchup"]
         tmp_df["Game Date"] = model_df.iloc[mylist]["Game Date"]
         tmp_df["Home Team"] = model_df.iloc[mylist]["Home Team"]
+        tmp_df["Home Record"] = model_df.iloc[mylist]["Hm_Record"]
         tmp_df["Away Team"] = model_df.iloc[mylist]["Away Team"]
+        tmp_df["Away Record"] = model_df.iloc[mylist]["Aw_Record"]
         tmp_df["Home W"] = model_df.iloc[mylist]["Home W"]
         tmp_df["Home Spread W"] = model_df.iloc[mylist]["Home Spread W"]
 
@@ -949,6 +637,7 @@ def single_game_model(data_seasons, today, matchup):
                     "Target Variable",
                     "R^2",
                     "RMSE",
+                    "MAE",
                     "Recall Score",
                     "Precision Score",
                     "ROC AUC",
@@ -958,6 +647,7 @@ def single_game_model(data_seasons, today, matchup):
             model_stats_df["Target Variable"] = [target_variable]
             model_stats_df["R^2"] = [model.score(X_test[feature_list], y_test)]
             model_stats_df["RMSE"] = [np.sqrt(mean_squared_error(y_test, predictions))]
+            model_stats_df["MAE"] = [mean_absolute_error(y_test, predictions)]
             model_stats_df["Recall Score"] = [
                 recall_score(y_test, predictions)
             ]  # tp / (tp + fn)
@@ -971,11 +661,14 @@ def single_game_model(data_seasons, today, matchup):
                 columns=[
                     "Target Variable",
                     "R^2",
+                    "RMSE",
+                    "MAE",
                 ]
             )
             model_stats_df["Target Variable"] = [target_variable]
             model_stats_df["R^2"] = [model.score(X_test[feature_list], y_test)]
             model_stats_df["RMSE"] = [np.sqrt(mean_squared_error(y_test, predictions))]
+            model_stats_df["MAE"] = [mean_absolute_error(y_test, predictions)]
 
         """
             Confusion Matrix for Train/Test
@@ -1016,7 +709,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Matchup",
                 "Game Date",
                 "Home Team",
+                'Home Record',
                 "Away Team",
+                'Away Record',
                 f"Predict",
                 f"Predict Probability",
                 "Away Moneyline",
@@ -1034,7 +729,9 @@ def single_game_model(data_seasons, today, matchup):
         pred_df["Matchup"] = matchup_data.iloc[mylist]["Matchup"]
         pred_df["Game Date"] = matchup_data.iloc[mylist]["Game Date"]
         pred_df["Home Team"] = matchup_data.iloc[mylist]["Hm_Tm"]
+        pred_df["Home Record"] = matchup_data.iloc[mylist]["Hm_Record"]
         pred_df["Away Team"] = matchup_data.iloc[mylist]["Aw_Tm"]
+        pred_df["Away Record"] = matchup_data.iloc[mylist]["Aw_Record"]
         pred_df["Away Moneyline"] = matchup_data.iloc[mylist]["Away Moneyline"]
         pred_df["Home Moneyline"] = matchup_data.iloc[mylist]["Home Moneyline"]
         pred_df["Home Spread"] = matchup_data.iloc[mylist]["Home Spread"]
@@ -1113,6 +810,10 @@ def single_game_model(data_seasons, today, matchup):
                 final_pred_df["Away Team"][0],
                 final_pred_df["Home Team"][0],
             ],
+            "Records": [
+                final_pred_df["Away Record"][0],
+                final_pred_df["Home Record"][0],
+            ],
             "Win Prob.": [
                 1 - final_pred_df["Home W Probability"][0],
                 final_pred_df["Home W Probability"][0],
@@ -1122,8 +823,8 @@ def single_game_model(data_seasons, today, matchup):
                 final_pred_df["Home Pt Diff"][0],
             ],
             "Pred. Pts": [
-                round(aw_points, 1),
-                round(hm_points, 1),
+                round(aw_points, 0),
+                round(hm_points, 0),
             ],
             "Spread W": [
                 1 - final_pred_df["Home Spread W Probability"][0],
@@ -1174,6 +875,10 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     win_prob = [away_win_prob, home_win_prob]
 
     mov = sim_results[1]
+
+    # team records
+    hm_record = sim_results_df['Records'][1]
+    aw_record = sim_results_df['Records'][0]
 
     # gambling lines
     spread = sim_results_df["Spread"][1]
@@ -1292,9 +997,9 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     )
 
     # add Legends
-    plt.legend([away_abbr, home_abbr], loc="upper right")
+    plt.legend([f"{away_abbr} ({aw_record})", f"{home_abbr} ({hm_record})"], loc="upper right")
 
-    # add team logos
+    # add team helmets/logos
     ## extent = [left x, right x, lower y, upper y]
     try:
         plt.imshow(aw_img, extent=[-1.65, -0.75, -1.25, -0.5])
