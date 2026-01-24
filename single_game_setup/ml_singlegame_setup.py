@@ -943,8 +943,12 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     )
 
     # add Legends
+    # TODO: records are looking funky with a possible negative number
+    # plt.legend(
+    #     [f"{away_abbr} ({aw_record})", f"{home_abbr} ({hm_record})"], loc="upper right"
+    # )
     plt.legend(
-        [f"{away_abbr} ({aw_record})", f"{home_abbr} ({hm_record})"], loc="upper right"
+        [f"{away_abbr}", f"{home_abbr}"], loc="upper right"
     )
 
     # add team helmets/logos
