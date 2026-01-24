@@ -1437,9 +1437,11 @@ def season_data(season):
                         [
                             "Matchup",
                             "Home Team",
+                            "Home Pts",
                             "Home Elo",
                             "Home Lg Rank",
                             "Away Team",
+                            "Away Pts",
                             "Away Elo",
                             "Away Lg Rank",
                             "Home W",

@@ -21,7 +21,7 @@ from sklearn.metrics import (
     roc_auc_score,
 )
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV, train_test_split
-from sklearn.neighbors import KNeighborsClassifier, KNeighborsRegressor
+from sklearn.linear_model import LinearRegression, RidgeClassifier, Ridge
 from sklearn.feature_selection import f_classif
 
 # import from other folders
@@ -32,7 +32,7 @@ from utils.beautiful_soup_helper import *
 pd.set_option("future.no_silent_downcasting", True)
 
 
-def single_game_model(data_seasons, today, matchup):
+def single_game_model(data_seasons, today, week, matchups):
 
     # make sure data_seasons is sorted
     data_seasons.sort()
@@ -73,18 +73,25 @@ def single_game_model(data_seasons, today, matchup):
     tf_dict = {True: 1, False: 0}
 
     # data for the matchup
-    hm_tm = matchup.split(" vs. ")[1]
-    aw_tm = matchup.split(" vs. ")[0]
-    matchup_data = rolling_gamedata(
-        data_seasons[-1],
-        hm_tm,
-        aw_tm,
-        pd.to_datetime(today),
-    )
-    matchup_data.loc[
-        matchup_data["Hm_TmDiv"] == matchup_data["Aw_TmDiv"], "Divisional Game"
-    ] = 1
-    matchup_data["Divisional Game"] = matchup_data["Divisional Game"].fillna(0)
+    matchup_data = pd.DataFrame()
+    for matchup in matchups:
+        hm_tm = matchup[1]
+        aw_tm = matchup[0]
+        tmp_data = rolling_gamedata(
+            data_seasons[-1],
+            hm_tm,
+            aw_tm,
+            pd.to_datetime(today),
+        )
+        tmp_data.loc[
+            tmp_data["Hm_TmDiv"] == tmp_data["Aw_TmDiv"], "Divisional Game"
+        ] = 1
+        tmp_data["Divisional Game"] = tmp_data["Divisional Game"].fillna(0)
+
+        if matchup_data.empty:
+            matchup_data = tmp_data.copy()
+        else:
+            matchup_data = pd.concat([matchup_data, tmp_data]).reset_index(drop=True)
 
     # dummy variable conference
     hm_conf_dummy = pd.get_dummies(
@@ -103,77 +110,65 @@ def single_game_model(data_seasons, today, matchup):
     matchup_data["Aw_FGpct"] = matchup_data["Aw_FGpct"].fillna(0)
     matchup_data["Hm_FGpct"] = matchup_data["Hm_FGpct"].fillna(0)
 
-    # matchup_data['']
     season = matchup_data["Hm_Season"][0]
-    matchup_teams = [
-        matchup_data["Matchup"][0].split(" vs. ")[0],
-        matchup_data["Matchup"][0].split(" vs. ")[1],
-    ]
 
-    elo_df = tm_elo_rating(season, pd.to_datetime(today) + timedelta(days=7))
-    elo_df = elo_df[pd.to_datetime(elo_df["Date"]) < pd.to_datetime(today)].reset_index(
-        drop=True
-    )
+    for n, matchup in enumerate(matchups):
+        matchup_teams = [
+            matchup[0],
+            matchup[1],
+        ]
 
-    tm_elo = (
-        elo_df[(elo_df["Tm"].isin(matchup_teams)) | (elo_df["Opp"].isin(matchup_teams))]
-        .sort_values(by=["Date"])
-        .reset_index(drop=True)
-    )
-    hm_results = tm_elo[
-        (tm_elo["Tm"] == matchup_data["Matchup"][0].split(" vs. ")[1])
-        | (tm_elo["Opp"] == matchup_data["Matchup"][0].split(" vs. ")[1])
-    ]
-    hm_elo_df = hm_results.iloc[-1, :]
-    if (matchup_data["Matchup"][0].split(" vs. ")[1]) in hm_elo_df["Tm"]:
-        hm_elo = hm_elo_df["Tm Elo"]
-    else:
-        hm_elo = hm_elo_df["Opp Elo"]
+        elo_df = tm_elo_rating(season, pd.to_datetime(today) + timedelta(days=7))
+        elo_df = elo_df[
+            pd.to_datetime(elo_df["Date"]) < pd.to_datetime(today)
+        ].reset_index(drop=True)
 
-    aw_results = tm_elo[
-        (tm_elo["Tm"] == matchup_data["Matchup"][0].split(" vs. ")[0])
-        | (tm_elo["Opp"] == matchup_data["Matchup"][0].split(" vs. ")[0])
-    ]
-    aw_elo_df = aw_results.iloc[-1, :]
-    if (matchup_data["Matchup"][0].split(" vs. ")[0]) in aw_elo_df["Tm"]:
-        aw_elo = aw_elo_df["Tm Elo"]
-    else:
-        aw_elo = aw_elo_df["Opp Elo"]
-
-    matchup_data["Home Elo"] = [hm_elo]
-    matchup_data["Away Elo"] = [aw_elo]
-    matchup_data["Elo_diff"] = matchup_data["Home Elo"] - matchup_data["Away Elo"]
-
-    # gambling lines for current matchup
-    odds_df = nfl_odds(max(data_seasons)).reset_index(drop=True)
-    odds_df = odds_df[
-        (odds_df["matchup"] == matchup_data["Matchup"][0])
-        & (
-            (pd.to_datetime(odds_df["gameday"].astype(object)).astype(str))
-            == str(matchup_data["Game Date"][0].strftime("%Y-%m-%d"))
-        )
-    ]
-    matchup_data = matchup_data.merge(
-        odds_df[
-            [
-                "matchup",
-                "gameday",
-                "hm_spread",
-                "home_moneyline",
-                "away_moneyline",
+        tm_elo = (
+            elo_df[
+                (elo_df["Tm"].isin(matchup_teams)) | (elo_df["Opp"].isin(matchup_teams))
             ]
-        ].rename(
-            columns={
-                "matchup": "Matchup",
-                "gameday": "Game Date",
-                "hm_spread": "Home Spread",
-                "home_moneyline": "Home Moneyline",
-                "away_moneyline": "Away Moneyline",
-            }
-        ),
-        how="left",
-        on=["Matchup", "Game Date"],
-    )
+            .sort_values(by=["Date"])
+            .reset_index(drop=True)
+        )
+        hm_results = tm_elo[
+            (tm_elo["Tm"] == matchup[1]) | (tm_elo["Opp"] == matchup[1])
+        ]
+        hm_elo_df = hm_results.iloc[-1, :]
+        if (matchup[1]) in hm_elo_df["Tm"]:
+            hm_elo = hm_elo_df["Tm Elo"]
+        else:
+            hm_elo = hm_elo_df["Opp Elo"]
+
+        aw_results = tm_elo[
+            (tm_elo["Tm"] == matchup[0]) | (tm_elo["Opp"] == matchup[0])
+        ]
+        aw_elo_df = aw_results.iloc[-1, :]
+        if (matchup[0]) in aw_elo_df["Tm"]:
+            aw_elo = aw_elo_df["Tm Elo"]
+        else:
+            aw_elo = aw_elo_df["Opp Elo"]
+
+        matchup_data.loc[n, "Home Elo"] = hm_elo
+        matchup_data.loc[n, "Away Elo"] = aw_elo
+        matchup_data.loc[n, "Elo_diff"] = (
+            matchup_data["Home Elo"][n] - matchup_data["Away Elo"][n]
+        )
+
+        # gambling lines for current matchup
+        odds_df = nfl_odds(max(data_seasons)).reset_index(drop=True)
+
+        # quick week calc
+        if week < 10:
+            week = "0"+str(week)
+
+        odds_df = odds_df[
+            (odds_df["matchup"] == f"{matchup[0]} vs. {matchup[1]}")
+            & (odds_df["game_id"].str[:7] == f"{max(data_seasons)}_{week}")
+        ]
+
+        matchup_data.loc[n, "Home Spread"] = odds_df["hm_spread"].values[0]
+        matchup_data.loc[n, "Home Moneyline"] = odds_df["home_moneyline"].values[0]
+        matchup_data.loc[n, "Away Moneyline"] = odds_df["away_moneyline"].values[0]
 
     # need to add all columns from matchup_df to matchup_data (the conference dummies)
     col_list = []
@@ -209,6 +204,8 @@ def single_game_model(data_seasons, today, matchup):
                 "Aw_TmDiv",
                 "Hm_TmDiv",
                 "Home W",
+                "Home Pts",
+                "Away Pts",
                 "Home Pt Diff",
                 "Home Spread",
                 "Home Spread W",
@@ -343,14 +340,20 @@ def single_game_model(data_seasons, today, matchup):
     # Elo rating difference
     model_df["Elo_diff"] = model_df["Home Elo"] - model_df["Away Elo"]
 
+    # Total Points
+    model_df['Total Pts'] = model_df['Home Pts'] + model_df['Away Pts']
+
     # feature selection
     model_df = model_df[
         [
             "Home W",
             "Home Team",
+            "Home Pts",
             "Away Team",
+            "Away Pts",
             "Matchup",
             "Game Date",
+            'Total Pts',
             "Home Pt Diff",
             "Home Spread",
             "Home Spread W",
@@ -417,8 +420,12 @@ def single_game_model(data_seasons, today, matchup):
 
     # adding record columns (format: W-L)
     ## loss calculated as G minus W
-    model_df['Hm_L'] = model_df['Hm_G'] - model_df['Hm_W']
-    model_df['Hm_Record'] = (model_df['Hm_W'].astype(int).astype(str)) + '-' + (model_df['Hm_L'].astype(int).astype(str))
+    model_df["Hm_L"] = model_df["Hm_G"] - model_df["Hm_W"]
+    model_df["Hm_Record"] = (
+        (model_df["Hm_W"].astype(int).astype(str))
+        + "-"
+        + (model_df["Hm_L"].astype(int).astype(str))
+    )
     model_df["Aw_L"] = model_df["Aw_G"] - model_df["Aw_W"]
     model_df["Aw_Record"] = (
         (model_df["Aw_W"].astype(int).astype(str))
@@ -445,14 +452,12 @@ def single_game_model(data_seasons, today, matchup):
         Set Target Variables/DFs
     """
     final_pred_df = pd.DataFrame()
-    final_model_coef = pd.DataFrame()
     final_model_stats = pd.DataFrame()
     for target_variable in [
         "Home W",
         "Home Spread W",
         "Home Pt Diff",
-        "Hm_Pts",
-        "Aw_Pts",
+        "Total Pts",
     ]:
         # logger.info(f"data transformed: setting target variable - {target_variable}")
         # target variable
@@ -469,7 +474,10 @@ def single_game_model(data_seasons, today, matchup):
                 columns=[
                     "Home W",
                     "Home Team",
+                    "Home Pts",
                     "Away Team",
+                    "Away Pts",
+                    "Total Pts",
                     "Game Date",
                     "Home Pt Diff",
                     "Home Spread W",
@@ -477,8 +485,8 @@ def single_game_model(data_seasons, today, matchup):
                     "Away Moneyline",
                     "Home Moneyline",
                     "Hm_Favorite",
-                    'Aw_Record',
-                    'Hm_Record',
+                    "Aw_Record",
+                    "Hm_Record",
                     f"{target_variable}",
                 ]
             )
@@ -492,8 +500,9 @@ def single_game_model(data_seasons, today, matchup):
                     "Game Date",
                     "Home Pt Diff",
                     "Home Spread W",
-                    "Hm_Pts",
-                    "Aw_Pts",
+                    "Home Pts",
+                    "Away Pts",
+                    "Total Pts",
                     "Away Moneyline",
                     "Home Moneyline",
                     "Hm_Favorite",
@@ -521,31 +530,19 @@ def single_game_model(data_seasons, today, matchup):
 
         # call model with parameters
         if target_variable in ["Home W", "Home Spread W"]:
-            GScv = GridSearchCV(
-                estimator=RandomForestClassifier(random_state=14),
-                param_grid={
-                    "n_estimators": (100, 250, 500),
-                    "criterion": ("gini", "entropy"),
-                    "class_weight": ("balanced", None),
-                },
-                scoring="f1",
-            )
-            GScv.fit(X_train, np.ravel(y_train))
 
-            model = GScv.best_estimator_
+            model = RandomForestClassifier(
+                class_weight="balanced",
+                n_estimators=500,
+                criterion='gini',
+                random_state=14,
+            )
+            model.fit(X_train, np.ravel(y_train))
 
         else:
-            GScv = GridSearchCV(
-                estimator=RandomForestRegressor(random_state=14),
-                param_grid={
-                    "n_estimators": (100, 250, 500),
-                    "criterion": ("gini", "entropy"),
-                },
-                scoring="r2",
-            )
-            GScv.fit(X_train, np.ravel(y_train))
+            model = LinearRegression()
 
-            model = GScv.best_estimator_
+            model.fit(X_train, np.ravel(y_train))
 
         """
                 FINDING best features
@@ -553,17 +550,13 @@ def single_game_model(data_seasons, today, matchup):
         features = model_X.columns.tolist()
         f_statistic, p_values = f_classif(model_X, np.ravel(model_y))
 
-        feat_df = (
-            pd.DataFrame(
-                data={
-                    "features": features,
-                    "f_stat": f_statistic,
-                    "p_values": p_values,
-                }
-            )
-            .sort_values(by=["p_values"], ascending=True)
-            .reset_index(drop=True)
-        )
+        feat_df = pd.DataFrame(
+            data={
+                "features": features,
+                "f_stat": f_statistic,
+                "p_values": p_values,
+            }
+        ).reset_index(drop=True)
 
         # limit to feature significance of <= 0.05
         feature_list = feat_df[feat_df["p_values"] <= 0.05].features.tolist()
@@ -576,6 +569,20 @@ def single_game_model(data_seasons, today, matchup):
 
         # re-run model with "important" features
         model.fit(X_train[feature_list], np.ravel(y_train))
+
+        if target_variable in ("Home Pt Diff", "Total Pts"):
+            # adding coefficients values for Linear Regression models
+            feat_df = (
+                pd.concat(
+                    [
+                        feat_df[feat_df["p_values"] <= 0.05].reset_index(drop=True),
+                        pd.DataFrame(data={"linear_coef": model.coef_}),
+                    ],
+                    axis=1,
+                )
+                .sort_values(by=["p_values"], ascending=True)
+                .reset_index(drop=True)
+            )
 
         # suppress scientific notation
         np.set_printoptions(suppress=True)
@@ -709,9 +716,9 @@ def single_game_model(data_seasons, today, matchup):
                 "Matchup",
                 "Game Date",
                 "Home Team",
-                'Home Record',
+                "Home Record",
                 "Away Team",
-                'Away Record',
+                "Away Record",
                 f"Predict",
                 f"Predict Probability",
                 "Away Moneyline",
@@ -780,68 +787,7 @@ def single_game_model(data_seasons, today, matchup):
             drop=True
         )
 
-    ## ensure no tie (home team +1)
-    # if (
-    #     round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
-    # ) & (final_pred_df["Home W Probability"][0] > 0.5):
-    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1) + 1
-    # elif (
-    #     round(final_pred_df["Hm_Pts"][0], 0) == round(final_pred_df["Aw_Pts"][0], 0)
-    # ) & (final_pred_df["Home W Probability"][0] < 0.5):
-    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1) - 1
-    # else:
-    #     hm_points = round(final_pred_df["Hm_Pts"][0], 1)
-
-    # ensure Pt Diff reflects Hm value properly
-    if final_pred_df["Home W"][0] == 0:
-        if final_pred_df["Home Pt Diff"][0] > 0:
-            final_pred_df["Home Pt Diff"][0] = final_pred_df["Home Pt Diff"][0] * -1
-    else:
-        if final_pred_df["Home Pt Diff"][0] < 0:
-            final_pred_df["Home Pt Diff"][0] = final_pred_df["Home Pt Diff"][0] * -1
-
-    hm_points = final_pred_df["Hm_Pts"][0]
-    aw_points = final_pred_df["Hm_Pts"][0] - final_pred_df["Home Pt Diff"][0]
-
-    # format a df to fit the donut chart
-    sg_win = pd.DataFrame(
-        data={
-            "Tm": [
-                final_pred_df["Away Team"][0],
-                final_pred_df["Home Team"][0],
-            ],
-            "Records": [
-                final_pred_df["Away Record"][0],
-                final_pred_df["Home Record"][0],
-            ],
-            "Win Prob.": [
-                1 - final_pred_df["Home W Probability"][0],
-                final_pred_df["Home W Probability"][0],
-            ],
-            "Point Diff": [
-                final_pred_df["Home Pt Diff"][0] * -1,
-                final_pred_df["Home Pt Diff"][0],
-            ],
-            "Pred. Pts": [
-                round(aw_points, 0),
-                round(hm_points, 0),
-            ],
-            "Spread W": [
-                1 - final_pred_df["Home Spread W Probability"][0],
-                final_pred_df["Home Spread W Probability"][0],
-            ],
-            "M/L": [
-                final_pred_df["Away Moneyline"][0],
-                final_pred_df["Home Moneyline"][0],
-            ],
-            "Spread": [
-                final_pred_df["Home Spread"][0] * -1,
-                final_pred_df["Home Spread"][0],
-            ],
-        }
-    )
-
-    return [final_pred_df, final_model_stats, final_model_coef, sg_win]
+    return [final_pred_df, final_model_stats]
 
 
 def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_prim):
@@ -877,8 +823,8 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     mov = sim_results[1]
 
     # team records
-    hm_record = sim_results_df['Records'][1]
-    aw_record = sim_results_df['Records'][0]
+    hm_record = sim_results_df["Records"][1]
+    aw_record = sim_results_df["Records"][0]
 
     # gambling lines
     spread = sim_results_df["Spread"][1]
@@ -970,7 +916,7 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     plt.text(
         0,
         0,
-        f"Location: @ {home_tm} ({spread})\n\n Total Pts: {int(round(away_score, 0)) + int(round(home_score, 0))}\n Margin of Victory: {math.ceil(pt_spread)}",
+        f"@ {home_tm} ({spread})\n\n Total Pts: {int(round(away_score, 0)) + int(round(home_score, 0))}\n Margin of Victory: {abs(int(round(away_score, 0)) - int(round(home_score, 0)))}\n\n {away_tm}: {int(round(away_score, 0))}\n {home_tm}: {int(round(home_score, 0))}",
         ha="center",
         va="center",
         fontsize=11,
@@ -997,7 +943,9 @@ def sim_donut_graph(season, away_tm, home_tm, sim_results_df, hm_tm_prim, aw_tm_
     )
 
     # add Legends
-    plt.legend([f"{away_abbr} ({aw_record})", f"{home_abbr} ({hm_record})"], loc="upper right")
+    plt.legend(
+        [f"{away_abbr} ({aw_record})", f"{home_abbr} ({hm_record})"], loc="upper right"
+    )
 
     # add team helmets/logos
     ## extent = [left x, right x, lower y, upper y]
